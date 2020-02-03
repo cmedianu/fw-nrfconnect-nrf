@@ -25,11 +25,15 @@ LOG_MODULE_REGISTER(download_client, CONFIG_DOWNLOAD_CLIENT_LOG_LEVEL);
 
 BUILD_ASSERT_MSG(CONFIG_DOWNLOAD_CLIENT_MAX_FRAGMENT_SIZE <=
 		 CONFIG_DOWNLOAD_CLIENT_MAX_RESPONSE_SIZE,
-		 "The response buffer must accommodate for a full fragment");
+		 "The response buffer must accommodate for a full non-TLS fragment");
 
-#if defined(CONFIG_LOG) && !defined(CONFIG_LOG_IMMEDIATE)
-BUILD_ASSERT_MSG(IS_ENABLED(CONFIG_DOWNLOAD_CLIENT_LOG_HEADERS) ?
-			 CONFIG_LOG_BUFFER_SIZE >= 2048 : 1,
+BUILD_ASSERT_MSG(CONFIG_DOWNLOAD_CLIENT_MAX_TLS_FRAGMENT_SIZE <=
+		 CONFIG_DOWNLOAD_CLIENT_MAX_RESPONSE_SIZE,
+		 "The response buffer must accommodate for a full TLS fragment");
+
+#if defined(CONFIG_LOG) && !defined(CONFIG_LOG_IMMEDIATE)\
+			&& defined(CONFIG_DOWNLOAD_CLIENT_LOG_HEADERS)
+BUILD_ASSERT_MSG(CONFIG_LOG_BUFFER_SIZE >= 2048,
 		 "Please increase log buffer sizer");
 #endif
 
@@ -128,13 +132,13 @@ static int resolve_and_connect(int family, const char *host,
 
 	/* Set up port and protocol */
 	if (cfg->sec_tag == -1) {
-		/* HTTP, port 80 */
 		proto = IPPROTO_TCP;
-		port = htons(80);
+		port = (cfg->port != 0) ? htons(cfg->port) :
+					  htons(80); /* HTTP, port 80 */
 	} else {
-		/* HTTPS, port 443 */
 		proto = IPPROTO_TLS_1_2;
-		port = htons(443);
+		port = (cfg->port != 0) ? htons(cfg->port) :
+					  htons(443); /* HTTPS, port 443 */
 	}
 
 	/* Lookup host */
@@ -244,7 +248,7 @@ static int get_request_send(struct download_client *client)
 	__ASSERT_NO_MSG(client->file);
 
 	/* Offset of last byte in range (Content-Range) */
-	off = client->progress + CONFIG_DOWNLOAD_CLIENT_MAX_FRAGMENT_SIZE - 1;
+	off = client->progress + client->fragment_size - 1;
 
 	if (client->file_size != 0) {
 		/* Don't request bytes past the end of file */
@@ -350,7 +354,7 @@ static int header_parse(struct download_client *client)
 
 static int fragment_evt_send(const struct download_client *client)
 {
-	__ASSERT(client->offset <= CONFIG_DOWNLOAD_CLIENT_MAX_FRAGMENT_SIZE,
+	__ASSERT(client->offset <= client->fragment_size,
 		 "Fragment overflow!");
 
 	__ASSERT(client->offset <= CONFIG_DOWNLOAD_CLIENT_MAX_RESPONSE_SIZE,
@@ -410,24 +414,39 @@ restart_and_suspend:
 	while (true) {
 		__ASSERT(dl->offset < sizeof(dl->buf), "Buffer overflow");
 
-		LOG_DBG("Receiving bytes..");
+		LOG_DBG("Receiving up to %d bytes at %p...",
+			(sizeof(dl->buf) - dl->offset), (dl->buf + dl->offset));
+
 		len = recv(dl->fd, dl->buf + dl->offset,
 			   sizeof(dl->buf) - dl->offset, 0);
 
-		if (len == -1) {
-			LOG_ERR("Error reading from socket, errno %d", errno);
-			rc = error_evt_send(dl, ENOTCONN);
-			if (rc) {
-				/* Restart and suspend */
-				break;
-			}
-			reconnect(dl);
-			goto send_again;
-		}
+		if ((len == 0) || (len == -1)) {
+			/* We just had an unexpected socket error or closure */
 
-		if (len == 0) {
-			LOG_WRN("Peer closed connection!");
-			rc = error_evt_send(dl, ECONNRESET);
+			/* If there is a partial data payload in our buffer,
+			 * and it has been accounted in our progress, we have
+			 * to hand it to the application before discarding it.
+			 */
+			if ((dl->offset > 0) && (dl->has_header)) {
+				rc = fragment_evt_send(dl);
+				if (rc) {
+					/* Restart and suspend */
+					LOG_INF("Fragment refused, download "
+						"stopped.");
+					break;
+				}
+			}
+
+			if (len == -1) {
+				LOG_ERR("Error in recv(), errno %d", errno);
+				rc = error_evt_send(dl, ENOTCONN);
+			}
+
+			if (len == 0) {
+				LOG_WRN("Peer closed connection!");
+				rc = error_evt_send(dl, ECONNRESET);
+			}
+
 			if (rc) {
 				/* Restart and suspend */
 				break;
@@ -472,7 +491,7 @@ restart_and_suspend:
 		dl->progress += MIN(dl->offset, len);
 
 		/* Have we received a whole fragment or the whole file? */
-		if ((dl->offset < CONFIG_DOWNLOAD_CLIENT_MAX_FRAGMENT_SIZE) &&
+		if ((dl->offset < dl->fragment_size) &&
 		    (dl->progress != dl->file_size)) {
 			LOG_DBG("Awaiting full fragment (%u)", dl->offset);
 			continue;
@@ -501,18 +520,18 @@ restart_and_suspend:
 			break;
 		}
 
-		/* Request next fragment */
-		dl->offset = 0;
-		dl->has_header = false;
-
 		/* Attempt to reconnect if the connection was closed */
 		if (dl->connection_close) {
 			dl->connection_close = false;
 			reconnect(dl);
 		}
 
+		/* Request next fragment */
 		/* Send a GET request for the next bytes */
 send_again:
+		dl->offset = 0;
+		dl->has_header = false;
+
 		rc = get_request_send(dl);
 		if (rc) {
 			rc = error_evt_send(dl, ECONNRESET);
@@ -564,6 +583,14 @@ int download_client_connect(struct download_client *client, const char *host,
 		if (config->sec_tag != -1) {
 			return -EINVAL;
 		}
+	}
+
+	if (config->sec_tag != -1) {
+		client->fragment_size =
+			CONFIG_DOWNLOAD_CLIENT_MAX_TLS_FRAGMENT_SIZE;
+	} else {
+		client->fragment_size =
+			CONFIG_DOWNLOAD_CLIENT_MAX_FRAGMENT_SIZE;
 	}
 
 	if (client->fd != -1) {

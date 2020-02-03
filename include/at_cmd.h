@@ -49,7 +49,7 @@ enum at_cmd_state {
  * @param response     Null terminated string containing the modem message
  *
  */
-typedef void (*at_cmd_handler_t)(char *response);
+typedef void (*at_cmd_handler_t)(const char *response);
 
 /**@brief Initialize AT command driver.
  *
@@ -107,6 +107,10 @@ int at_cmd_write_with_callback(const char *const cmd,
  *                is a CMS or CME errors will the error code be returned in the
  *                the function return code as a positive value. NULL pointer is
  *                allowed.
+ *
+ * @note It is allowed to use the same buffer for both, @ref cmd and @ref buf
+ *       parameters in order to save RAM. The function will not modify @ref buf
+ *       contents until the entire @ref cmd is sent.
  *
  * @retval 0 If command execution was successful (same as OK returned from
  *           modem). Error codes returned from the driver or by the socket are

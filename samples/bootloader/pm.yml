@@ -1,5 +1,5 @@
 #include <autoconf.h>
-#include <generated_dts_board_unfixed.h>
+#include <devicetree_unfixed.h>
 
 b0_image:
   size: CONFIG_PM_PARTITION_SIZE_B0_IMAGE
@@ -13,7 +13,7 @@ s0_pad:
   share_size: mcuboot_pad
   placement:
     after: b0
-    align: {start: DT_FLASH_ERASE_BLOCK_SIZE}
+    align: {start: CONFIG_FPROTECT_BLOCK_SIZE}
 
 s0_image:
   # S0 spans over the image booted by B0
@@ -33,14 +33,16 @@ s1_pad:
 s1_image:
   # This partition will only exist if mcuboot exists.
   share_size: mcuboot
-  placement: {after: s1_pad}
+  placement:
+    after: s1_pad
+    align: {end: CONFIG_FPROTECT_BLOCK_SIZE}
 
 s1:
   # Partition which contains the whole S1 partition.
   span: [s1_pad, s1_image]
 
 provision:
-  size: 0x1000
+  size: CONFIG_PM_PARTITION_SIZE_PROVISION
   placement:
     after: b0_image
     align: {start: 0x1000}

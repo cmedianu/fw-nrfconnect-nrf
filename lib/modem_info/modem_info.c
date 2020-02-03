@@ -34,7 +34,7 @@ LOG_MODULE_REGISTER(modem_info);
 #define AT_CMD_PDP_CONTEXT	"AT+CGDCONT?"
 #define AT_CMD_UICC_STATE	"AT%XSIM?"
 #define AT_CMD_VBAT		"AT%XVBAT"
-#define AT_CMD_TEMP		"AT%XTEMP"
+#define AT_CMD_TEMP		"AT%XTEMP?"
 #define AT_CMD_FW_VERSION	"AT+CGMR"
 #define AT_CMD_CRSM		"AT+CRSM"
 #define AT_CMD_ICCID		"AT+CRSM=176,12258,0,0,10"
@@ -94,8 +94,8 @@ LOG_MODULE_REGISTER(modem_info);
 #define VBAT_PARAM_INDEX	1
 #define VBAT_PARAM_COUNT	2
 
-#define TEMP_PARAM_INDEX	2
-#define TEMP_PARAM_COUNT	3
+#define TEMP_PARAM_INDEX	1
+#define TEMP_PARAM_COUNT	2
 
 #define MODEM_FW_PARAM_INDEX	0
 #define MODEM_FW_PARAM_COUNT	1
@@ -320,7 +320,7 @@ static const struct modem_info_data *const modem_data[] = {
 static rsrp_cb_t modem_info_rsrp_cb;
 static struct at_param_list m_param_list;
 
-static bool is_cesq_notification(char *buf, size_t len)
+static bool is_cesq_notification(const char *buf, size_t len)
 {
 	return strstr(buf, AT_CMD_CESQ_RESP) ? true : false;
 }
@@ -447,6 +447,14 @@ int modem_info_string_get(enum modem_info info, char *buf)
 			  CONFIG_MODEM_INFO_BUFFER_SIZE,
 			  NULL);
 
+	/* modem_info does not yet support array objects, so here we handle
+	 * the supported bands independently as a string
+	 */
+	if (info == MODEM_INFO_SUP_BAND) {
+		strcpy(buf, recv_buf + sizeof("%XCBAND: ") - 1);
+		return strlen(buf);
+	}
+
 	if (err != 0) {
 		return -EIO;
 	}
@@ -484,7 +492,7 @@ int modem_info_string_get(enum modem_info info, char *buf)
 	return len <= 0 ? -ENOTSUP : len;
 }
 
-static void modem_info_rsrp_subscribe_handler(void *context, char *response)
+static void modem_info_rsrp_subscribe_handler(void *context, const char *response)
 {
 	ARG_UNUSED(context);
 

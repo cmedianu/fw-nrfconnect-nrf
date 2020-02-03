@@ -5,6 +5,7 @@
  */
 #include <bluetooth/mesh/models.h>
 #include "model_utils.h"
+#include "mesh/mesh.h"
 
 /** Unknown encoded transition time value */
 #define TRANSITION_TIME_UNKNOWN (0x3F)
@@ -116,8 +117,8 @@ int model_send(struct bt_mesh_model *mod, struct bt_mesh_msg_ctx *ctx,
 	}
 
 	net_buf_simple_reset(mod->pub->msg);
-	memcpy(net_buf_simple_add(mod->pub->msg, buf->len), buf->data,
-	       buf->len);
+	net_buf_simple_add_mem(mod->pub->msg, buf->data, buf->len);
+
 	return bt_mesh_model_publish(mod);
 }
 
@@ -145,4 +146,9 @@ int model_ackd_send(struct bt_mesh_model *mod, struct bt_mesh_msg_ctx *ctx,
 		model_ack_clear(ack);
 	}
 	return retval;
+}
+
+bool bt_mesh_model_pub_is_unicast(const struct bt_mesh_model *mod)
+{
+	return mod->pub && BT_MESH_ADDR_IS_UNICAST(mod->pub->addr);
 }

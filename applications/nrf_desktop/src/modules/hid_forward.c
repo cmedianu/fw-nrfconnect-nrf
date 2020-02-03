@@ -5,11 +5,14 @@
  */
 
 #include <zephyr/types.h>
-#include <misc/slist.h>
+#include <sys/slist.h>
 
 #include <bluetooth/services/hids_c.h>
 #include <bluetooth/conn.h>
-#include <misc/byteorder.h>
+#include <bluetooth/hci.h>
+#include <sys/byteorder.h>
+
+#include "ble_controller_hci_vs.h"
 
 #define MODULE hid_forward
 #include "module_state_event.h"
@@ -62,6 +65,40 @@ static sys_slist_t consumer_ctrl_event_list;
 
 static struct k_spinlock lock;
 
+
+static int nrfxlib_vs_conn_latency_update(struct bt_conn *conn, u16_t latency)
+{
+	struct net_buf *buf;
+	hci_vs_cmd_conn_update_t *cmd_conn_update;
+
+	buf = bt_hci_cmd_create(HCI_VS_OPCODE_CMD_CONN_UPDATE,
+				sizeof(*cmd_conn_update));
+	if (!buf) {
+		LOG_ERR("Could not allocate command buffer");
+		return -ENOBUFS;
+	}
+
+	u16_t conn_handle;
+
+	int err = bt_hci_get_conn_handle(conn, &conn_handle);
+
+	if (err) {
+		LOG_ERR("Failed obtaining conn_handle (err %d)", err);
+		return err;
+	}
+
+	cmd_conn_update = net_buf_add(buf, sizeof(*cmd_conn_update));
+
+	cmd_conn_update->connection_handle   = conn_handle;
+	cmd_conn_update->conn_interval_us    = 1000;
+	cmd_conn_update->conn_latency        = latency;
+	cmd_conn_update->supervision_timeout = 400;
+
+	err = bt_hci_cmd_send_sync(HCI_VS_OPCODE_CMD_CONN_UPDATE, buf, NULL);
+
+	return err;
+}
+
 static int change_connection_latency(struct hids_subscriber *subscriber, u16_t latency)
 {
 	__ASSERT_NO_MSG(subscriber != NULL);
@@ -93,9 +130,18 @@ static int change_connection_latency(struct hids_subscriber *subscriber, u16_t l
 
 	err = bt_conn_le_param_update(conn, &param);
 	if (err == -EALREADY) {
-		LOG_WRN("Slave latency already changed");
+		LOG_INF("Slave latency already changed");
 		err = 0;
-	} else if (err) {
+	} else if (err == -EINVAL) {
+		/* LLPM connection interval is not supported by
+		 * bt_conn_le_param_update function.
+		 */
+		__ASSERT_NO_MSG(IS_ENABLED(CONFIG_BT_LL_NRFXLIB));
+		LOG_INF("Use vendor specific HCI command");
+		err = nrfxlib_vs_conn_latency_update(conn, latency);
+	}
+
+	if (err) {
 		LOG_WRN("Cannot update parameters (%d)", err);
 	} else {
 		LOG_INF("BLE latency changed to: %"PRIu16, latency);
@@ -416,7 +462,7 @@ static struct hids_subscriber *find_subscriber_hidc(u16_t pid)
 
 static int switch_to_low_latency(struct hids_subscriber *subscriber)
 {
-	int err;
+	int err = 0;
 
 	if (IS_ENABLED(CONFIG_BT_LL_NRFXLIB)) {
 		if (subscriber->timestamp == 0) {
@@ -480,6 +526,8 @@ static void handle_config_forward(const struct config_forward_event *event)
 	if (event->status == CONFIG_STATUS_FETCH) {
 		LOG_INF("Forwarding fetch request");
 		frame.status = CONFIG_STATUS_FETCH;
+	} else {
+		frame.status = CONFIG_STATUS_PENDING;
 	}
 
 	frame.recipient = event->recipient;
@@ -573,6 +621,46 @@ static void handle_config_forward_get(const struct config_forward_get_event *eve
 	}
 }
 
+static void disconnect_subscriber(struct hids_subscriber *subscriber)
+{
+	LOG_INF("HID device disconnected");
+
+	/* Release all pressed keys. */
+	u8_t empty_data[MAX(REPORT_SIZE_CONSUMER_CTRL,
+			MAX(REPORT_SIZE_MOUSE,
+				REPORT_SIZE_KEYBOARD_KEYS))] = {0};
+	struct bt_gatt_hids_c_rep_info *rep = NULL;
+
+	while (NULL != (rep = bt_gatt_hids_c_rep_next(&subscriber->hidc, rep))) {
+		if (bt_gatt_hids_c_rep_type(rep) ==
+				BT_GATT_HIDS_REPORT_TYPE_INPUT) {
+
+			switch (bt_gatt_hids_c_rep_id(rep)) {
+			case REPORT_ID_MOUSE:
+				process_mouse_report(empty_data);
+				break;
+
+			case REPORT_ID_KEYBOARD_KEYS:
+				process_keyboard_report(empty_data);
+				break;
+
+			case REPORT_ID_CONSUMER_CTRL:
+				process_consumer_ctrl_report(empty_data);
+				break;
+
+			default:
+				/* Unsupported report ID. */
+				__ASSERT_NO_MSG(false);
+				break;
+			}
+		}
+	}
+
+	bt_gatt_hids_c_release(&subscriber->hidc);
+	subscriber->pid = 0;
+	subscriber->timestamp = 0;
+}
+
 static bool event_handler(const struct event_header *eh)
 {
 	if (is_hid_report_sent_event(eh)) {
@@ -657,11 +745,7 @@ static bool event_handler(const struct event_header *eh)
 			for (size_t i = 0; i < ARRAY_SIZE(subscribers); i++) {
 				if ((bt_gatt_hids_c_assign_check(&subscribers[i].hidc)) &&
 				    (bt_gatt_hids_c_conn(&subscribers[i].hidc) == event->id)) {
-					LOG_INF("HID device disconnected");
-					bt_gatt_hids_c_release(
-					  &subscribers[i].hidc);
-					subscribers[i].pid = 0;
-					subscribers[i].timestamp = 0;
+					disconnect_subscriber(&subscribers[i]);
 				}
 			}
 		}

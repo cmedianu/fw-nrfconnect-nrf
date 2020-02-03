@@ -5,10 +5,10 @@
  */
 
 #include <zephyr/types.h>
-#include <power.h>
+#include <power/power.h>
 
 #include <device.h>
-#include <gpio.h>
+#include <drivers/gpio.h>
 #include <hal/nrf_power.h>
 
 #include <profiler.h>
@@ -94,6 +94,11 @@ enum power_states sys_pm_policy_next_state(s32_t ticks)
 	return SYS_POWER_STATE_ACTIVE;
 }
 
+bool sys_pm_policy_low_power_devices(enum power_states pm_state)
+{
+	return sys_pm_is_sleep_state(pm_state);
+}
+
 static void system_off(void)
 {
 	if (power_state == POWER_STATE_ERROR_SUSPENDED) {
@@ -143,7 +148,8 @@ static bool event_handler(const struct event_header *eh)
 
 			profiler_term();
 
-			if (connection_count > 0) {
+			if (IS_ENABLED(CONFIG_DESKTOP_POWER_MANAGER_STAY_ON) ||
+			    (connection_count > 0)) {
 				/* Connection is active, keep OS alive. */
 				power_state = POWER_STATE_SUSPENDED;
 				LOG_WRN("System suspended");
@@ -208,7 +214,8 @@ static bool event_handler(const struct event_header *eh)
 		}
 
 		if (!usb_connected && (connection_count == 0) &&
-		    (power_state == POWER_STATE_SUSPENDED)) {
+		    (power_state == POWER_STATE_SUSPENDED) &&
+		    !IS_ENABLED(CONFIG_DESKTOP_POWER_MANAGER_STAY_ON)) {
 			/* Last peer disconnected during standby.
 			 * Turn system off.
 			 */
@@ -288,11 +295,6 @@ static bool event_handler(const struct event_header *eh)
 			k_delayed_work_init(&power_down_trigger, power_down);
 			k_delayed_work_submit(&power_down_trigger,
 					      POWER_DOWN_CHECK_MS);
-
-			if (IS_ENABLED(CONFIG_DESKTOP_POWER_MANAGER_CONSTLAT)) {
-				nrf_power_task_trigger(NRF_POWER_TASK_CONSTLAT);
-				LOG_WRN("Constant latency enabled");
-			}
 		} else if (event->state == MODULE_STATE_ERROR) {
 			power_state = POWER_STATE_ERROR;
 			k_delayed_work_cancel(&power_down_trigger);

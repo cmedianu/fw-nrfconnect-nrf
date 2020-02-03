@@ -38,41 +38,38 @@ manifest:
     - name: zephyr
       repo-path: fw-nrfconnect-zephyr
       west-commands: scripts/west-commands.yml
-      revision: fc95403819ca26d7db05496ea4142a5d0ccaddd3
-    - name: nffs
-      revision: bc62a2fa9d98ddb5d633c932ea199bc68e10f194
-      path: modules/fs/nffs
-      remote: zephyrproject
+      revision: 924b7938af13d22feb5ee52b08ce807c788b5317
     - name: segger
       revision: 6fcf61606d6012d2c44129edc033f59331e268bc
       path: modules/debug/segger
       remote: zephyrproject
     - name: mbedtls
-      repo-path: fw-nrfconnect-mbedtls
       path: modules/crypto/mbedtls
-      revision: c3be1b52f5e56aaba6039c423478cfaf62a91622
+      revision: 3776c158fe138a72c97c187e4d31c81c37884be9
+      remote: zephyrproject
     - name: mcuboot
       repo-path: fw-nrfconnect-mcuboot
-      revision: a631263274e7220e008138e7f26c2d35bbcb2203
+      revision: d0c2fbefd26e830ddff08b3060d7f16af5eccd26
+      path: bootloader/mcuboot
     - name: mcumgr
       repo-path: fw-nrfconnect-mcumgr
-      revision: f663988d35da559a37f263d369842dbce309d1fa
+      revision: 1afd6bbbfed0137b3156349f968634bbd8fc6fff
       path: modules/lib/mcumgr
     - name: tinycbor
-      repo-path: fw-nrfconnect-tinycbor
       path: modules/lib/tinycbor
-      revision: 86d5ed5dd544b107d2d0882961a19c2c6cb06572
+      revision: 0fc68fceacd1efc1ce809c5880c380f3d98b7b6e
+      remote: zephyrproject
     - name: ci-tools
       path: tools/ci-tools
       remote: zephyrproject
-      revision: e01f3bce2a94847253369efb9a081f5c0e9ec882
+      revision: e869d2524d1344d80063bf2898095faf9228f7b5
     - name: net-tools
       path: tools/net-tools
       remote: zephyrproject
       revision: 30b7efa827b04d2e47840716b0372737fe7d6c92
     - name: nrfxlib
       path: nrfxlib
-      revision: a806f5fcac3bde98c4c7324a0c4d547b4ba89f75
+      revision: 587634674ac33f719aab1a9b990cab0e835d49ee
     - name: cmock
       path: test/cmock
       revision: c243b9a7a7b3c471023193992b46cf1bd1910450
@@ -86,36 +83,42 @@ manifest:
       repo-path: mbedtls
       revision: mbedtls-2.16.3
       remote: armmbed
-
-    # The projects below are included for completeness, but they are
-    # not known to work properly with the NCS multi-image / partition
-    # manager patchset. Please report any issues.
-    #
-    # https://developer.nordicsemi.com/nRF_Connect_SDK/doc/latest/nrf/scripts/partition_manager/partition_manager.html
     - name: civetweb
       path: modules/lib/civetweb
       remote: civetweb
       revision: 99129c5efc907ea613c4b73ccff07581feb58a7a
+    - name: edtt
+      path: tools/edtt
+      remote: zephyrproject
+      revision: dd4dd502ef2fbeced6ef7faaba562a7ddca45632
     - name: fatfs
       path: modules/fs/fatfs
       remote: zephyrproject
-      revision: df96914dd989907f3a5de4cb95b116c2f305820d
+      revision: 9ee6b9b9511151d0d64a74d532d39c6f2bbd4f16
     - name: hal_nordic
       path: modules/hal/nordic
       remote: zephyrproject
-      revision: 1b14177ff2176a1d17f3dd5e7e217f44337255db
+      revision: 12d7647870888e4cb0e421f2b26884c2e76915ac
     - name: hal_st
       path: modules/hal/st
       remote: zephyrproject
-      revision: 0ec40aed8087f26bd9ac1b70fb5a6c326a6451aa
+      revision: fa481784b3c49780f18d50bafe00390ccb62b2ec
     - name: libmetal
       path: modules/hal/libmetal
       remote: zephyrproject
       revision: 45e630d6152824f807d3f919958605c4626cbdff
+    - name: loramac-node
+      path: modules/lib/loramac-node
+      remote: zephyrproject
+      revision: 29e516ec585b1a909af2b5f1c60d83e7d4d563e3
     - name: lvgl
       path: modules/lib/gui/lvgl
       remote: zephyrproject
-      revision: d4708d0a432e95f51bdc712591ba5295b751140c
+      revision: 74fc2e753a997bd71cefa34dd9c56dcb954b42e2
+    - name: nrf_hw_models
+      path: modules/bsim_hw_models/nrf_hw_models
+      remote: zephyrproject
+      revision: fec69703cb1ca06fcdab6d5fde01274f0fc5c759
     - name: open-amp
       path: modules/lib/open-amp
       remote: zephyrproject
@@ -123,11 +126,19 @@ manifest:
     - name: openthread
       path: modules/lib/openthread
       remote: zephyrproject
-      revision: 3c32244f098f8daf8741efe0a2ad839b67f8567f
+      revision: 3c6191eb4e8ca44b5f4eeaa696837bce14e83c69
     - name: littlefs
       path: modules/fs/littlefs
       remote: zephyrproject
       revision: fe9572dd5a9fcf93a249daa4233012692bd2881d
+    - name: mipi-sys-t
+      path: modules/debug/mipi-sys-t
+      remote: zephyrproject
+      revision: baf51863f19f009b92e762115ba5572a5b996b92
+    - name: canopennode
+      path: modules/lib/canopennode
+      remote: zephyrproject
+      revision: 5c6b0566d56264efd4bf23ed58bc7cb8b32fe063
 
   self:
     path: nrf

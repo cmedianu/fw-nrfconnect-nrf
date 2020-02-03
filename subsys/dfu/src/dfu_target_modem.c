@@ -1,6 +1,6 @@
 #include <zephyr.h>
 #include <stdio.h>
-#include <flash.h>
+#include <drivers/flash.h>
 #include <net/socket.h>
 #include <nrf_socket.h>
 #include <logging/log.h>
@@ -174,6 +174,7 @@ int dfu_target_modem_write(const void *const buf, size_t len)
 
 	sent = send(fd, buf, len, 0);
 	if (sent > 0) {
+		offset += len;
 		return 0;
 	}
 
@@ -222,4 +223,3 @@ int dfu_target_modem_done(bool successful)
 
 	return 0;
 }
-

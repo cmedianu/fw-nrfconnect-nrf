@@ -19,8 +19,9 @@ Requirements
 
 * One of the following development boards:
 
-  * nRF52840 Development Kit board (PCA10056)
-  * nRF52 Development Kit board (PCA10040)
+  * |nRF5340DK|
+  * |nRF52840DK|
+  * |nRF52DK|
 
 * Smartphone or tablet
 
@@ -64,5 +65,5 @@ The sample uses the following Zephyr libraries:
 
 * ``include/zephyr.h``
 * ``include/device.h``
-* ``include/misc/reboot.h``
+* ``include/power/reboot.h``
 * :ref:`GPIO Interface <zephyr:api_peripherals>`

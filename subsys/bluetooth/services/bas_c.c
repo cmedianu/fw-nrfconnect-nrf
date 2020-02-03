@@ -39,7 +39,7 @@ static u8_t notify_process(struct bt_conn *conn,
 
 	bas_c = CONTAINER_OF(params, struct bt_gatt_bas_c, notify_params);
 	if (!data || !length) {
-		LOG_ERR("NULL notification received.");
+		LOG_INF("Notifications disabled.");
 		if (bas_c->notify_cb) {
 			bas_c->notify_cb(bas_c, BT_GATT_BAS_VAL_INVALID);
 		}
@@ -311,7 +311,8 @@ int bt_gatt_bas_c_subscribe(struct bt_gatt_bas_c *bas_c,
 	bas_c->notify_params.value = BT_GATT_CCC_NOTIFY;
 	bas_c->notify_params.value_handle = bas_c->val_handle;
 	bas_c->notify_params.ccc_handle = bas_c->ccc_handle;
-	atomic_set(bas_c->notify_params.flags, BT_GATT_SUBSCRIBE_FLAG_VOLATILE);
+	atomic_set_bit(bas_c->notify_params.flags,
+		       BT_GATT_SUBSCRIBE_FLAG_VOLATILE);
 
 	LOG_DBG("Subscribe: val: %u, ccc: %u",
 		bas_c->notify_params.value_handle,

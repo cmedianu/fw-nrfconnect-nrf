@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: LicenseRef-BSD-5-Clause-Nordic
  */
 #include <zephyr.h>
-#include <gpio.h>
-#include <flash.h>
+#include <drivers/gpio.h>
+#include <drivers/flash.h>
 #include <bsd.h>
 #include <lte_lc.h>
 #include <at_cmd.h>
@@ -101,9 +101,9 @@ static int dfu_button_init(void)
 }
 
 
-void fota_dl_handler(enum fota_download_evt_id evt_id)
+void fota_dl_handler(const struct fota_download_evt *evt)
 {
-	switch (evt_id) {
+	switch (evt->id) {
 	case FOTA_DOWNLOAD_EVT_ERROR:
 		printk("Received error from fota_download\n");
 		/* Fallthrough */

@@ -4,6 +4,16 @@
 # SPDX-License-Identifier: LicenseRef-BSD-5-Clause-Nordic
 #
 
+function(add_overlay_config image overlay_file)
+  set(old_conf ${${image}OVERLAY_CONFIG})
+  string(FIND "${old_conf}" "${overlay_file}" found)
+  if (${found} EQUAL -1)
+    set(${image}OVERLAY_CONFIG
+      "${old_conf} ${overlay_file}"
+      CACHE STRING "" FORCE)
+  endif()
+endfunction()
+
 # This CMakeLists.txt is executed by the root application only when
 # B0 (SECURE_BOOT) is enabled. First, figure out what image will be
 # booted by B0, and set the required properties for that image to be
@@ -11,6 +21,11 @@
 
 if (CONFIG_BOOTLOADER_MCUBOOT)
   set(image_to_boot mcuboot_)
+
+  add_overlay_config(
+    mcuboot_
+    ${CMAKE_CURRENT_SOURCE_DIR}/multi_image_mcuboot.conf
+    )
 
   # Partition S1 is only enabled when MCUBoot is enabled.
   set(s1_addr $<TARGET_PROPERTY:partition_manager,PM_S1_ADDRESS>)
@@ -27,14 +42,15 @@ but MCUboot is not being built.")
   endif()
 endif()
 
-# Include a kconfig file which enables CONFIG_FW_INFO in the image
-# which is booted by B0.
-set(old_conf ${${image_to_boot}OVERLAY_CONFIG})
-string(FIND "${old_conf}" "${CMAKE_CURRENT_SOURCE_DIR}/fw_info.conf" found)
-if (${found} EQUAL -1)
-  set(${image_to_boot}OVERLAY_CONFIG
-    "${old_conf} ${CMAKE_CURRENT_SOURCE_DIR}/fw_info.conf"
-    CACHE STRING "" FORCE)
+if (image_to_boot)
+  # Include a kconfig file which enables CONFIG_FW_INFO in the image
+  # which is booted by B0.
+  add_overlay_config(
+    ${image_to_boot}
+    ${CMAKE_CURRENT_SOURCE_DIR}/fw_info.conf
+    )
+else()
+  assert(CONFIG_FW_INFO "CONFIG_FW_INFO must be set")
 endif()
 
 # Partition S0 will always contain the image to be booted by B0.
@@ -43,8 +59,18 @@ if (s1_addr)
   set(s1_arg --s1-addr ${s1_addr})
 endif()
 
+if (CONFIG_SOC_NRF9160)
+  # Override PM_PROVISION_ADDRESS since Partition Manager cannot yet place
+  # partitions in OTP.
+  set(otp_start_addr "0xff8108")
+  set(provision_addr ${otp_start_addr})
+else ()
+  set(provision_addr "$<TARGET_PROPERTY:partition_manager,PM_PROVISION_ADDRESS>")
+endif()
+
 # Build and include hex file with provision data about the image to be booted.
-set(NRF_BOOTLOADER_SCRIPTS ${NRF_DIR}/scripts/bootloader)
+set(NRF_SCRIPTS            ${NRF_DIR}/scripts)
+set(NRF_BOOTLOADER_SCRIPTS ${NRF_SCRIPTS}/bootloader)
 set(PROVISION_HEX_NAME     provision.hex)
 set(PROVISION_HEX          ${PROJECT_BINARY_DIR}/${PROVISION_HEX_NAME})
 
@@ -71,7 +97,7 @@ add_custom_command(
   ${NRF_BOOTLOADER_SCRIPTS}/provision.py
   --s0-addr ${s0_addr}
   ${s1_arg}
-  --provision-addr $<TARGET_PROPERTY:partition_manager,PM_PROVISION_ADDRESS>
+  --provision-addr ${provision_addr}
   --public-key-files ${ALL_PUBLIC_KEY_FILES}
   --output ${PROVISION_HEX}
   DEPENDS

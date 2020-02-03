@@ -60,20 +60,23 @@ enum download_client_evt_id {
 	DOWNLOAD_CLIENT_EVT_DONE,
 };
 
+struct download_fragment {
+	const void *buf;
+	size_t len;
+};
+
 /**
  * @brief Download client event.
  */
 struct download_client_evt {
 	/** Event ID. */
 	enum download_client_evt_id id;
+
 	union {
 		/** Error cause. */
 		int error;
 		/** Fragment data. */
-		struct fragment {
-			const void *buf;
-			size_t len;
-		} fragment;
+		struct download_fragment fragment;
 	};
 };
 
@@ -81,10 +84,17 @@ struct download_client_evt {
  * @brief Download client configuration options.
  */
 struct download_client_cfg {
-	/** TLS security tag. If -1, TLS is disabled. */
+	/** IP port.
+	 *  Pass zero to use default, or non-zero to override.
+	 */
+	u16_t port;
+	/** TLS security tag.
+	 *  Pass -1 to disable TLS.
+	 */
 	int sec_tag;
 	/** Access point name identifying a packet data network.
-	 * Must be a null-terminated string or NULL to use the default APN.
+	 *  Pass a null-terminated string with the APN
+	 *  or NULL to use the default APN.
 	 */
 	const char *apn;
 };
@@ -120,6 +130,8 @@ struct download_client {
 	size_t file_size;
 	/** Download progress, number of bytes downloaded. */
 	size_t progress;
+	/** Fragment size being used for this download. */
+	size_t fragment_size;
 
 	/** Whether the HTTP header for
 	 * the current fragment has been processed.
@@ -173,7 +185,7 @@ int download_client_connect(struct download_client *client, const char *host,
 /**
  * @brief Download a file.
  *
- * The download is carried out in fragments of @c
+ * The download is carried out in fragments of up to @c
  * CONFIG_DOWNLOAD_CLIENT_MAX_FRAGMENT_SIZE bytes,
  * which are delivered to the application
  * via @ref DOWNLOAD_CLIENT_EVT_FRAGMENT events.

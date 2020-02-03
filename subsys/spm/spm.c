@@ -5,11 +5,11 @@
  */
 
 #include <zephyr.h>
-#include <misc/printk.h>
-#include <misc/util.h>
+#include <sys/printk.h>
+#include <sys/util.h>
 #include <linker/linker-defs.h>
 #include <device.h>
-#include <gpio.h>
+#include <drivers/gpio.h>
 #include "spm_internal.h"
 
 #if !defined(CONFIG_ARM_SECURE_FIRMWARE)
@@ -302,6 +302,9 @@ static void spm_config_peripherals(void)
 #endif
 #ifdef NRF_CLOCK
 		PERIPH("NRF_CLOCK", NRF_CLOCK, CONFIG_SPM_NRF_CLOCK_NS),
+#endif
+#ifdef NRF_RTC0
+		PERIPH("NRF_RTC0", NRF_RTC0, CONFIG_SPM_NRF_RTC0_NS),
 #endif
 #ifdef NRF_RTC1
 		PERIPH("NRF_RTC1", NRF_RTC1, CONFIG_SPM_NRF_RTC1_NS),

@@ -10,7 +10,7 @@
 
 #include <zephyr/types.h>
 #include <zephyr.h>
-#include <uart.h>
+#include <drivers/uart.h>
 
 #include <device.h>
 #include <soc.h>
@@ -49,7 +49,8 @@ static K_SEM_DEFINE(ble_init_ok, 0, 2);
 static struct bt_conn *current_conn;
 static struct bt_conn *auth_conn;
 
-static struct device  *uart;
+static struct device *uart;
+static bool rx_disabled;
 
 struct uart_data_t {
 	void  *fifo_reserved;
@@ -83,15 +84,13 @@ static void uart_cb(struct device *uart)
 			if (rx) {
 				rx->len = 0;
 			} else {
-				char dummy;
+				/* Disable UART interface, it will be
+				 * enabled again after releasing the buffer.
+				 */
+				uart_irq_rx_disable(uart);
+				rx_disabled = true;
 
 				printk("Not able to allocate UART receive buffer\n");
-
-				/* Drop one byte to avoid spinning in a
-				 * eternal loop.
-				 */
-				uart_fifo_read(uart, &dummy, 1);
-
 				return;
 			}
 		}
@@ -346,36 +345,6 @@ static struct bt_gatt_nus_cb nus_cb = {
 	.received_cb = bt_receive_cb,
 };
 
-static void bt_ready(int err)
-{
-	if (err) {
-		printk("BLE init failed with error code %d\n", err);
-		return;
-	}
-
-	if (IS_ENABLED(CONFIG_SETTINGS)) {
-		settings_load();
-	}
-
-	err = bt_gatt_nus_init(&nus_cb);
-	if (err) {
-		printk("Failed to initialize UART service (err: %d)\n", err);
-		return;
-	}
-
-	err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), sd,
-			      ARRAY_SIZE(sd));
-	if (err) {
-		printk("Advertising failed to start (err %d)\n", err);
-	}
-
-	/* Give two semaphores to signal both the led_blink_thread, and
-	 * and the ble_write_thread that ble initialized successfully
-	 */
-	k_sem_give(&ble_init_ok);
-	k_sem_give(&ble_init_ok);
-}
-
 void error(void)
 {
 	dk_set_leds_state(DK_ALL_LEDS_MSK, DK_NO_LEDS_MSK);
@@ -438,31 +407,40 @@ static void led_blink_thread(void)
 	printk("Starting Nordic UART service example\n");
 
 	err = init_uart();
-	if (!err) {
-		err = bt_enable(bt_ready);
+	if (err) {
+		error();
 	}
 
 	configure_gpio();
 
-	if (!err) {
-		bt_conn_cb_register(&conn_callbacks);
+	bt_conn_cb_register(&conn_callbacks);
 
-		if (IS_ENABLED(CONFIG_BT_GATT_NUS_SECURITY_ENABLED)) {
-			bt_conn_auth_cb_register(&conn_auth_callbacks);
-		}
-
-		err = k_sem_take(&ble_init_ok, K_MSEC(100));
-
-		if (!err) {
-			printk("Bluetooth initialized\n");
-		} else {
-			printk("BLE initialization \
-				did not complete in time\n");
-		}
+	if (IS_ENABLED(CONFIG_BT_GATT_NUS_SECURITY_ENABLED)) {
+		bt_conn_auth_cb_register(&conn_auth_callbacks);
 	}
 
+	err = bt_enable(NULL);
 	if (err) {
 		error();
+	}
+
+	printk("Bluetooth initialized\n");
+	k_sem_give(&ble_init_ok);
+
+	if (IS_ENABLED(CONFIG_SETTINGS)) {
+		settings_load();
+	}
+
+	err = bt_gatt_nus_init(&nus_cb);
+	if (err) {
+		printk("Failed to initialize UART service (err: %d)\n", err);
+		return;
+	}
+
+	err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), sd,
+			      ARRAY_SIZE(sd));
+	if (err) {
+		printk("Advertising failed to start (err %d)\n", err);
 	}
 
 	for (;;) {
@@ -484,7 +462,13 @@ void ble_write_thread(void)
 		if (bt_gatt_nus_send(NULL, buf->data, buf->len)) {
 			printk("Failed to send data over BLE connection\n");
 		}
+
 		k_free(buf);
+
+		if (rx_disabled) {
+			rx_disabled = false;
+			uart_irq_rx_enable(uart);
+		}
 	}
 }
 
@@ -493,4 +477,3 @@ K_THREAD_DEFINE(led_blink_thread_id, STACKSIZE, led_blink_thread, NULL, NULL,
 
 K_THREAD_DEFINE(ble_write_thread_id, STACKSIZE, ble_write_thread, NULL, NULL,
 		NULL, PRIORITY, 0, K_NO_WAIT);
-

@@ -13,7 +13,7 @@
 #include <inttypes.h>
 #include <errno.h>
 #include <zephyr.h>
-#include <misc/printk.h>
+#include <sys/printk.h>
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
@@ -345,6 +345,8 @@ static struct bt_conn_auth_cb conn_auth_callbacks = {
 void main(void)
 {
 	int err;
+
+	printk("Starting Bluetooth Central BAS example\n");
 
 	bt_gatt_bas_c_init(&bas_c);
 

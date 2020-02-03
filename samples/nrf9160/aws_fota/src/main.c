@@ -15,18 +15,17 @@
 #include <net/bsdlib.h>
 #include <net/aws_fota.h>
 #include <dfu/mcuboot.h>
-#include <misc/reboot.h>
+#include <power/reboot.h>
 
 #if defined(CONFIG_USE_NRF_CLOUD)
 #define NRF_CLOUD_SECURITY_TAG 16842753
 #endif
 
-#if defined(CONFIG_BSD_LIBRARY)
-#include "nrf_inbuilt_key.h"
-#endif
-
 #if defined(CONFIG_PROVISION_CERTIFICATES)
 #include "certificates.h"
+#if defined(CONFIG_MODEM_KEY_MGMT)
+#include <modem_key_mgmt.h>
+#endif
 #endif
 
 #if !defined(CONFIG_CLOUD_CLIENT_ID)
@@ -60,6 +59,7 @@ void bsd_recoverable_error_handler(uint32_t err)
 
 #endif /* defined(CONFIG_BSD_LIBRARY) */
 
+#if !defined(CONFIG_USE_NRF_CLOUD)
 /* Topic for updating shadow topic with version number */
 #define AWS "$aws/things/"
 #define UPDATE_DELTA_TOPIC AWS "%s/shadow/update"
@@ -70,7 +70,7 @@ static int update_device_shadow_version(struct mqtt_client *const client)
 {
 	struct mqtt_publish_param param;
 	char update_delta_topic[strlen(AWS) + strlen("/shadow/update") +
-				CLIENT_ID_LEN];
+				CLIENT_ID_LEN + 1];
 	u8_t shadow_update_payload[CONFIG_DEVICE_SHADOW_PAYLOAD_SIZE];
 
 	int ret = snprintf(update_delta_topic,
@@ -108,6 +108,7 @@ static int update_device_shadow_version(struct mqtt_client *const client)
 
 	return mqtt_publish(client, &param);
 }
+#endif /* !defined(CONFIG_USE_NRF_CLOUD) */
 
 /**@brief Function to print strings without null-termination. */
 static void data_print(u8_t *prefix, u8_t *data, size_t len)
@@ -151,7 +152,7 @@ void mqtt_evt_handler(struct mqtt_client * const c,
 	int err;
 
 	err = aws_fota_mqtt_evt_handler(c, evt);
-	if (err > 0) {
+	if (err == 0) {
 		/* Event handled by FOTA library so we can skip it */
 		return;
 	} else if (err < 0) {
@@ -334,24 +335,24 @@ static int provision_certificates(void)
 		"\n");
 	printk("************************* WARNING *************************\n");
 	nrf_sec_tag_t sec_tag = CONFIG_CLOUD_CERT_SEC_TAG;
-	nrf_key_mgnt_cred_type_t cred[] = {
-		NRF_KEY_MGMT_CRED_TYPE_CA_CHAIN,
-		NRF_KEY_MGMT_CRED_TYPE_PRIVATE_CERT,
-		NRF_KEY_MGMT_CRED_TYPE_PUBLIC_CERT,
+	enum modem_key_mgnt_cred_type cred[] = {
+		MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN,
+		MODEM_KEY_MGMT_CRED_TYPE_PRIVATE_CERT,
+		MODEM_KEY_MGMT_CRED_TYPE_PUBLIC_CERT,
 	};
 
 	/* Delete certificates */
-	for (nrf_key_mgnt_cred_type_t type = 0; type < 3; type++) {
-		err = nrf_inbuilt_key_delete(sec_tag, type);
-		printk("nrf_inbuilt_key_delete(%u, %d) => result=%d\n",
+	for (enum modem_key_mgnt_cred_type type = 0; type < 3; type++) {
+		err = modem_key_mgmt_delete(sec_tag, type);
+		printk("modem_key_mgmt_delete(%u, %d) => result=%d\n",
 				sec_tag, type, err);
 	}
 
 	/* Write certificates */
-	for (nrf_key_mgnt_cred_type_t type = 0; type < 3; type++) {
-		err = nrf_inbuilt_key_write(sec_tag, cred[type],
+	for (enum modem_key_mgnt_cred_type type = 0; type < 3; type++) {
+		err = modem_key_mgmt_write(sec_tag, cred[type],
 				certificates[type], cert_len[type]);
-		printk("nrf_inbuilt_key_write => result=%d\n", err);
+		printk("modem_key_mgmt_write => result=%d\n", err);
 	}
 	return 0;
 }
@@ -511,7 +512,7 @@ void main(void)
 
 	client_init(&client, CONFIG_MQTT_BROKER_HOSTNAME);
 
-	err = aws_fota_init(&client, CONFIG_APP_VERSION, aws_fota_cb_handler);
+	err = aws_fota_init(&client, aws_fota_cb_handler);
 	if (err != 0) {
 		printk("ERROR: aws_fota_init %d\n", err);
 		return;

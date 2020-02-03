@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <logging/log.h>
-#include <uart.h>
+#include <drivers/uart.h>
 #include <string.h>
 #include <init.h>
 #include <at_cmd.h>
@@ -17,7 +17,12 @@
 LOG_MODULE_REGISTER(at_host, CONFIG_AT_HOST_LOG_LEVEL);
 
 /* Stack definition for AT host workqueue */
+#ifdef CONFIG_SIZE_OPTIMIZATIONS
 #define AT_HOST_STACK_SIZE 512
+#else
+#define AT_HOST_STACK_SIZE 1024
+#endif
+
 K_THREAD_STACK_DEFINE(at_host_stack_area, AT_HOST_STACK_SIZE);
 
 #define CONFIG_UART_0_NAME      "UART_0"
@@ -60,7 +65,7 @@ static struct k_work cmd_send_work;
 
 
 
-static inline void write_uart_string(char *str)
+static inline void write_uart_string(const char *str)
 {
 	/* Send characters until, but not including, null */
 	for (size_t i = 0; str[i]; i++) {
@@ -68,7 +73,7 @@ static inline void write_uart_string(char *str)
 	}
 }
 
-static void response_handler(void *context, char *response)
+static void response_handler(void *context, const char *response)
 {
 	ARG_UNUSED(context);
 
@@ -78,7 +83,7 @@ static void response_handler(void *context, char *response)
 
 static void cmd_send(struct k_work *work)
 {
-	char              str[19];
+	char              str[25];
 	enum at_cmd_state state;
 	int               err;
 
@@ -101,11 +106,11 @@ static void cmd_send(struct k_work *work)
 		write_uart_string(ERROR_STR);
 		break;
 	case AT_CMD_ERROR_CMS:
-		sprintf(str, "+CMS: %d\r\n", err);
+		sprintf(str, "+CMS ERROR: %d\r\n", err);
 		write_uart_string(str);
 		break;
 	case AT_CMD_ERROR_CME:
-		sprintf(str, "+CME: %d\r\n", err);
+		sprintf(str, "+CME ERROR: %d\r\n", err);
 		write_uart_string(str);
 		break;
 	default:
@@ -117,7 +122,6 @@ static void cmd_send(struct k_work *work)
 
 static void uart_rx_handler(u8_t character)
 {
-	static bool cr_state; /* Whether last character received was a <CR> */
 	static bool inside_quotes;
 	static size_t at_cmd_len;
 
@@ -132,35 +136,31 @@ static void uart_rx_handler(u8_t character)
 		return;
 	}
 
-	/*
-	 * Handle termination characters, if outside quotes.
-	 * The characters are never written to buffer unless inside quotes.
-	 */
+	/* Handle termination characters, if outside quotes. */
 	if (!inside_quotes) {
 		switch (character) {
 		case '\0':
 			if (term_mode == MODE_NULL_TERM) {
 				goto send;
 			}
+			LOG_WRN("Ignored null; would terminate string early.");
 			return;
 		case '\r':
 			if (term_mode == MODE_CR) {
 				goto send;
 			}
-			if (term_mode == MODE_CR_LF) {
-				cr_state = true;
-			}
-			return;
+			break;
 		case '\n':
 			if (term_mode == MODE_LF) {
 				goto send;
 			}
-			if (term_mode == MODE_CR_LF && cr_state) {
+			if (term_mode == MODE_CR_LF &&
+			    at_cmd_len > 0 &&
+			    at_buf[at_cmd_len - 1] == '\r') {
 				goto send;
 			}
-			return;
+			break;
 		}
-		cr_state = false;
 	}
 
 	/* Detect AT command buffer overflow, leaving space for null */
@@ -183,7 +183,6 @@ send:
 	at_buf[at_cmd_len] = '\0'; /* Terminate the command string */
 
 	/* Reset UART handler state */
-	cr_state = false;
 	inside_quotes = false;
 	at_cmd_len = 0;
 
@@ -233,10 +232,12 @@ static int at_uart_init(char *uart_dev_name)
 		if (err) {
 			if (k_uptime_get_32() - start_time >
 			    CONFIG_AT_HOST_UART_INIT_TIMEOUT) {
+				LOG_ERR("UART check failed: %d. "
+					"UART initialization timed out.", err);
 				return -EIO;
 			}
 
-			LOG_ERR("UART check failed: %d. "
+			LOG_INF("UART check failed: %d. "
 				"Dropping buffer and retrying.", err);
 
 			while (uart_fifo_read(uart_dev, &dummy, 1)) {

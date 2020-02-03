@@ -30,7 +30,7 @@ get_filename_component(NRF_BASE ${CMAKE_CURRENT_LIST_DIR}../ DIRECTORY)
 set(ENV{NRF_BASE} ${NRF_BASE})
 
 if(NOT DEFINED ENV{MCUBOOT_BASE})
-  get_filename_component(MCUBOOT_BASE ${CMAKE_CURRENT_LIST_DIR}/../../mcuboot/ REALPATH)
+  get_filename_component(MCUBOOT_BASE ${CMAKE_CURRENT_LIST_DIR}/../../bootloader/mcuboot/ REALPATH)
   set(ENV{MCUBOOT_BASE} ${MCUBOOT_BASE})
 endif()
 
@@ -157,6 +157,7 @@ set(NRF_EXTRACT_CONTENT_COMMAND
   "*.rst:boards:${NRF_RST_OUT}/doc/nrf"
   "release-notes*.rst:doc:${NRF_RST_OUT}/doc/nrf"
   "changelog.rst:doc:${NRF_RST_OUT}/doc/nrf"
+  "*.rst:doc/nrf/drivers:${NRF_RST_OUT}"
   "*.rst:include:${NRF_RST_OUT}/doc/nrf"
   "*.rst:lib:${NRF_RST_OUT}/doc/nrf"
   "*.rst:scripts:${NRF_RST_OUT}/doc/nrf"
@@ -257,6 +258,9 @@ add_custom_target(
   mcuboot-html
   COMMAND ${CMAKE_COMMAND} -E env
   NRF_BASE=${NRF_BASE}
+  ZEPHYR_OUTPUT=${HTML_DIR}/zephyr
+  NRF_OUTPUT=${HTML_DIR}/nrf
+  NRF_RST_SRC=${NRF_RST_OUT}/doc/nrf
   ${SPHINXBUILD} -w ${MCUBOOT_SPHINX_LOG} -N -b html ${MCUBOOT_SPHINXOPTS} ${MCUBOOT_RST_OUT}/doc/mcuboot ${HTML_DIR}/mcuboot
 
   WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}

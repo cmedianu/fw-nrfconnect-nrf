@@ -1,5 +1,4 @@
 CONFIG_ARM=y
-CONFIG_SOC_FAMILY_NRF=y
 CONFIG_SOC_SERIES_NRF91X=y
 CONFIG_SOC_NRF9160_SICA=y
 CONFIG_BOARD_NRF9160_PCA20035=y
@@ -23,7 +22,8 @@ CONFIG_UART_CONSOLE=y
 
 # Enable I2C
 CONFIG_I2C=y
-CONFIG_I2C_2=y
+# Note: I2C_2 is enabled in Kconfig.defconfig where it can depend on I2C
+#	to avoid warnings when building for MCUboot, which disables I2C.
 
 # Enable power management IC ADP536x
 CONFIG_ADP536X=y

@@ -25,7 +25,7 @@ See the following links for information about the different building blocks ment
 
   * :ref:`zephyr:application` is a complete guide to application development with Zephyr, including the build and configuration system.
   * :ref:`zephyr:cmake-details` describes in-depth the usage of CMake for Zephyr-based applications.
-  * :ref:`zephyr:application_kconfig` contains a guide for Kconfig usage in applications.
+  * :ref:`zephyr:application-kconfig` contains a guide for Kconfig usage in applications.
   * :ref:`zephyr:application_dt` explains how to use Device Tree and its overlays to customize an application's Device Tree.
 
 |NCS| additions
@@ -36,7 +36,7 @@ You must be aware of these additions when you start writing your own application
 
   * The |NCS| provides an additional :file:`boilerplate.cmake` that must be included before Zephyr's in the :file:`CMakeLists.txt` file of your application::
 
-      include(path/to/nrf/cmake/boilerplate.cmake)
+      include($ENV{ZEPHYR_BASE}/../nrf/cmake/boilerplate.cmake)
       include($ENV{ZEPHYR_BASE}/cmake/app/boilerplate.cmake NO_POLICY_SCOPE)
 
     Since the |NCS| does not require or provide an environment variable equivalent to :makevar:`ZEPHYR_BASE`, you can either create your own or locate the full path in your own :file:`CMakeLists.txt`.
@@ -62,4 +62,3 @@ In order to define your own board, you can use the following Zephyr guides as re
 
   * :ref:`custom_board_definition` is a guide to adding your own custom board to the Zephyr build system.
   * :ref:`board_porting_guide` is a complete guide to porting Zephyr to your own board.
-

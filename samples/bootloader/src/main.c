@@ -7,14 +7,14 @@
 #include <zephyr/types.h>
 #include <errno.h>
 #include <toolchain.h>
-#include <misc/util.h>
-#include <misc/printk.h>
+#include <sys/util.h>
+#include <sys/printk.h>
 #include <nrf.h>
 #include <pm_config.h>
 #include <bl_validation.h>
 #include <bl_crypto.h>
 #include <fw_info.h>
-#include <drivers/fprotect.h>
+#include <fprotect.h>
 #include <provision.h>
 #ifdef CONFIG_UART_NRFX
 #ifdef CONFIG_UART_0_NRF_UART
@@ -46,16 +46,31 @@ extern u32_t _vector_table_pointer;
 
 static void boot_from(const struct fw_info *fw_info)
 {
-	u32_t *vector_table = (u32_t *)fw_info->firmware_address;
+	u32_t *vector_table = (u32_t *)fw_info->address;
 
 	printk("Attempting to boot from address 0x%x.\n\r",
-		fw_info->firmware_address);
+		fw_info->address);
 
-	if (!bl_validate_firmware_local(fw_info->firmware_address,
+	if (!bl_validate_firmware_local(fw_info->address,
 					fw_info)) {
-		printk("Failed to validate!\n\r");
+		printk("Failed to validate, permanently invalidating!\n\r");
+		fw_info_invalidate(fw_info);
 		return;
 	}
+
+#ifndef CONFIG_SOC_NRF9160
+	/* Protect provision page after firmware is validated so invalidation
+	 * of public keys can be written directly into the page. Note that for
+	 * nRF91, the provision page is kept in OTP which does not need or
+	 * support protection.
+	 */
+	int err = fprotect_area(PM_PROVISION_ADDRESS, PM_PROVISION_SIZE);
+
+	if (err) {
+		printk("Failed to protect B0 provision page.\n\r");
+		return;
+	}
+#endif
 
 #if CONFIG_ARCH_HAS_USERSPACE
 	__ASSERT(!(CONTROL_nPRIV_Msk & __get_CONTROL()),
@@ -75,7 +90,7 @@ static void boot_from(const struct fw_info *fw_info)
 		nvic->ICPR[i] = 0xFFFFFFFF;
 	}
 
-	printk("Booting (0x%x).\r\n", fw_info->firmware_address);
+	printk("Booting (0x%x).\r\n", fw_info->address);
 
 	uninit_used_peripherals();
 
@@ -97,9 +112,11 @@ static void boot_from(const struct fw_info *fw_info)
 	__DSB(); /* Force Memory Write before continuing */
 	__ISB(); /* Flush and refill pipeline with updated permissions */
 
-	VTOR = fw_info->firmware_address;
+	VTOR = fw_info->address;
 
-	fw_info_abi_provide(fw_info);
+	if (!fw_info_ext_api_provide(fw_info, true)) {
+		return;
+	}
 
 	/* Set MSP to the new address and clear any information from PSP */
 	__set_MSP(vector_table[0]);
@@ -112,10 +129,10 @@ static void boot_from(const struct fw_info *fw_info)
 
 void main(void)
 {
-	int err = fprotect_area(PM_B0_ADDRESS, PM_B0_SIZE);
+	int err = fprotect_area(PM_B0_IMAGE_ADDRESS, PM_B0_IMAGE_SIZE);
 
 	if (err) {
-		printk("Protect B0 flash failed, cancel startup.\n\r");
+		printk("Failed to protect B0 flash, cancel startup.\n\r");
 		return;
 	}
 
@@ -124,8 +141,7 @@ void main(void)
 	const struct fw_info *s0_info = fw_info_find(s0_addr);
 	const struct fw_info *s1_info = fw_info_find(s1_addr);
 
-	if (!s1_info || (s0_info->firmware_version >=
-			 s1_info->firmware_version)) {
+	if (!s1_info || (s0_info->version >= s1_info->version)) {
 		boot_from(s0_info);
 		boot_from(s1_info);
 	} else {

@@ -4,26 +4,17 @@
 # SPDX-License-Identifier: LicenseRef-BSD-5-Clause-Nordic
 #
 
-config MCUBOOT_BUILD_S1_VARIANT
-	# This can not depend on BOOTLOADER_MCUBOOT, or SECURE_BOOT as this
-	# option has to be set when building MCUBoot itself. Instead an error
-	# is raised by CMake if an incorrect configuration is found.
-	bool "Build S1 variant of MCUBoot"
-	help
-	  Build upgrade candidate of MCUBoot for alternative slot S1.
+menu "Bootloader"
 
-config SECURE_BOOT_CRYPTO_CLIENT
-	bool "Include Secure Bootloader crypto client API"
-	help
-	  Set this option to enable the crypto client API
-	  which gives access to the cryptographic functions
-	  from the secure bootloader. This will only work
-	  when the secure bootloader is enabled.
+config MCUBOOT_BUILD_S1_VARIANT
+	bool
+	prompt "Build S1 variant of mcuboot" if !SECURE_BOOT
+	default y if SECURE_BOOT
 
 config SECURE_BOOT
 	bool "Use Secure Bootloader"
 	depends on !IS_SECURE_BOOTLOADER
-	select SECURE_BOOT_VALIDATION
+	select FW_INFO
 	help
 	  Set this option to enable the first stage bootloader which
 	  verifies the signature of the app.
@@ -39,7 +30,6 @@ config SB_PRIVATE_KEY_PROVIDED
 	  Hidden config specifying whether the build system has access to the
 	  private key used for signing, and will use it to perform signing and
 	  create the public key for the provision page.
-
 
 choice SB_SIGNING
 	prompt "Firmware signing method"
@@ -101,10 +91,11 @@ config SB_PUBLIC_KEY_FILES
 	  signing key used to sign the image. See SB_SIGNING_KEY_FILE.
 	  The hashes of the public keys specified in this configuration will be
 	  placed after the aforementioned public key hash, in the order
-	  they appear in this config.
-	  If config is an empty string, 2 generated debug files
-	  will be used.
+	  they appear in this config. The order is significant since if an image
+	  is successfully validated against a public key in the list, all
+	  public keys before it in the list will be invalidated.
 	  Example value: ~/keys/pk1.pem,~/keys/pk2.pem,~/keys/pk3.pem
+	  If config is an empty string, 2 generated debug files will be used.
 
 config SB_DEBUG_SIGNATURE_PUBLIC_KEY_LAST
 	bool "[DEBUG] Place signing public key last"
@@ -114,22 +105,33 @@ config SB_DEBUG_SIGNATURE_PUBLIC_KEY_LAST
 	  first. This is meant to be used for testing looping through the
 	  public keys.
 
-
 endif # SECURE_BOOT
 
 menuconfig IS_SECURE_BOOTLOADER
 	bool "Current app is bootloader"
-	select SECURE_BOOT_VALIDATION
+	depends on SECURE_BOOT_VALIDATION
 	select SW_VECTOR_RELAY if SOC_SERIES_NRF51X
+	select NRFX_NVMC
 	help
 	  This option is set by the first stage bootloader app to include all
 	  files and set all the options required.
 
 if IS_SECURE_BOOTLOADER
 
-partition=B0_IMAGE
-partition-size=0x7000
-source "${ZEPHYR_BASE}/../nrf/subsys/partition_manager/Kconfig.template.partition_size"
+config PM_PARTITION_SIZE_PROVISION
+	hex
+	default 0x0 if SOC_NRF9160
+	default 0x1000 if !SOC_NRF9160
+	prompt "Flash space reserved for PROVISION" if !SOC_NRF9160
+	help
+	  Flash space set aside for the PROVISION partition.
+
+config PM_PARTITION_SIZE_B0_IMAGE
+	hex "Flash space reserved for B0_IMAGE"
+	default 0x8000 if SOC_NRF9160
+	default 0x7000 if !SOC_NRF9160
+	help
+	  Flash space set aside for the B0_IMAGE partition.
 
 menuconfig SECURE_BOOT_DEBUG
 	bool "Printing"
@@ -162,10 +164,7 @@ config SB_BPROT_IN_DEBUG
 endif # SECURE_BOOT_DEBUG
 endif # IS_SECURE_BOOTLOADER
 
-if IS_SECURE_BOOTLOADER || SECURE_BOOT || SECURE_BOOT_CRYPTO_CLIENT
-
 rsource "bl_crypto/Kconfig"
 rsource "bl_validation/Kconfig"
 
-endif
-
+endmenu

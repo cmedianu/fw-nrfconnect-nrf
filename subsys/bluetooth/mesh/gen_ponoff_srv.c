@@ -61,7 +61,7 @@ static void send_rsp(struct bt_mesh_ponoff_srv *srv,
 static void handle_get(struct bt_mesh_model *model, struct bt_mesh_msg_ctx *ctx,
 		       struct net_buf_simple *buf)
 {
-	if (buf->len != BT_MESH_PONOFF_MSG_LEN_STATUS) {
+	if (buf->len != BT_MESH_PONOFF_MSG_LEN_GET) {
 		return;
 	}
 
@@ -72,7 +72,7 @@ static void set_on_power_up(struct bt_mesh_ponoff_srv *srv,
 			    struct bt_mesh_msg_ctx *ctx,
 			    enum bt_mesh_on_power_up new)
 {
-	if (new >= BT_MESH_ON_POWER_UP_INVALID || new == srv->on_power_up) {
+	if (new == srv->on_power_up) {
 		return;
 	}
 
@@ -105,6 +105,10 @@ static void handle_set_msg(struct bt_mesh_model *model,
 
 	struct bt_mesh_ponoff_srv *srv = model->user_data;
 	enum bt_mesh_on_power_up new = net_buf_simple_pull_u8(buf);
+
+	if (new >= BT_MESH_ON_POWER_UP_INVALID) {
+		return;
+	}
 
 	set_on_power_up(srv, ctx, new);
 
@@ -176,6 +180,27 @@ static int bt_mesh_ponoff_srv_init(struct bt_mesh_model *model)
 	struct bt_mesh_ponoff_srv *srv = model->user_data;
 
 	srv->ponoff_model = model;
+	net_buf_simple_init(model->pub->msg, 0);
+
+	if (IS_ENABLED(CONFIG_BT_MESH_MODEL_EXTENSIONS)) {
+		/* Model extensions:
+		 * To simplify the model extension tree, we're flipping the
+		 * relationship between the ponoff server and the ponoff setup
+		 * server. In the specification, the ponoff setup server extends
+		 * the ponoff server, which is the opposite of what we're doing
+		 * here. This makes no difference for the mesh stack, but it
+		 * makes it a lot easier to extend this model, as we won't have
+		 * to support multiple extenders.
+		 */
+		bt_mesh_model_extend(model, srv->onoff.model);
+		bt_mesh_model_extend(model, srv->dtt.model);
+		bt_mesh_model_extend(
+			model,
+			bt_mesh_model_find(
+				bt_mesh_model_elem(model),
+				BT_MESH_MODEL_ID_GEN_POWER_ONOFF_SETUP_SRV));
+	}
+
 	return 0;
 }
 

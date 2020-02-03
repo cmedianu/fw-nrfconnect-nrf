@@ -10,10 +10,11 @@
 #include <zephyr/types.h>
 #include <device.h>
 #include <drivers/uart.h>
-#include <misc/byteorder.h>
+#include <sys/byteorder.h>
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/conn.h>
+#include <bluetooth/hci.h>
 
 #include "ble_controller_hci_vs.h"
 
@@ -121,7 +122,9 @@ static void ble_chn_stats_print(bool update_channel_map)
 		u32_t cdc_val;
 
 		/* Repeated to monitor CDC state */
-		err = uart_line_ctrl_get(cdc_dev, LINE_CTRL_DTR, &cdc_val);
+		err = uart_line_ctrl_get(cdc_dev,
+					 UART_LINE_CTRL_DTR,
+					 &cdc_val);
 		if (!err) {
 			cdc_dtr = cdc_val;
 		}
@@ -471,9 +474,8 @@ static void enable_qos_reporting(void)
 	cmd_enable = net_buf_add(buf, sizeof(*cmd_enable));
 	cmd_enable->enable = 1;
 
-	err = bt_hci_cmd_send(
-		HCI_VS_OPCODE_CMD_QOS_CONN_EVENT_REPORT_ENABLE,
-		buf);
+	err = bt_hci_cmd_send_sync(
+		HCI_VS_OPCODE_CMD_QOS_CONN_EVENT_REPORT_ENABLE, buf, NULL);
 	if (err) {
 		LOG_ERR("Failed to enable HCI VS QoS");
 		return;

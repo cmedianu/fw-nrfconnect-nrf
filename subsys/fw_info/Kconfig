@@ -7,6 +7,7 @@
 menuconfig FW_INFO
 	bool
 	prompt "Firmware Metadata"
+	imply NRFX_NVMC
 
 if (FW_INFO)
 config FW_VALIDATION_METADATA_OFFSET
@@ -22,11 +23,12 @@ config FW_INFO_OFFSET
 	default 0x200
 	help
 	  The location of firmware information inside the current firmware
-	  image. Valid values are 0x200, 0x400 and 0x800. Compatible readers
-	  of firmware information should search all possible offsets. Note
-	  that all space between the vector table and this address is unused.
+	  image. Valid values are 0x0, 0x200, 0x400, 0x800, and 0x1000.
+	  Compatible readers of firmware information should search all possible
+	  offsets. Note that all space between the vector table and this address
+	  is unused.
 
-config FW_INFO_VERSION
+config FW_INFO_FIRMWARE_VERSION
 	int "Version number of the firmware."
 	default 1
 
@@ -55,18 +57,11 @@ config FW_INFO_MAGIC_FIRMWARE_INFO
 	  Magic word value specific to firmware information structs (inside
 	  the firmware). For more information, see FW_INFO_MAGIC_COMMON.
 
-config FW_INFO_MAGIC_ABI_GETTER_INFO
-	hex "Magic word for ABI getter structs (32 bits)."
-	default 0x2ed9a4c5
-	help
-	  Magic word value specific to ABI getter structs.
-	  For more information, see FW_INFO_MAGIC_COMMON.
-
-config FW_INFO_MAGIC_ABI_INFO
-	hex "Magic word for ABI structs (32 bits)."
+config FW_INFO_MAGIC_EXT_API
+	hex "Magic word for EXT_API structs (32 bits)."
 	default 0xb845acea
 	help
-	  Magic word value specific to ABI structs.
+	  Magic word value specific to EXT_API structs.
 	  For more information, see FW_INFO_MAGIC_COMMON.
 
 config FW_INFO_HARDWARE_ID
@@ -74,6 +69,7 @@ config FW_INFO_HARDWARE_ID
 	range 0 255
 	default 51 if SOC_SERIES_NRF51X
 	default 52 if SOC_SERIES_NRF52X
+	default 53 if SOC_SERIES_NRF53X
 	default 91 if SOC_SERIES_NRF91X
 	help
 	  Used to ensure binary compatibility.
@@ -82,7 +78,7 @@ config FW_INFO_HARDWARE_ID
 config FW_INFO_VERSION
 	int "Version number of the fw_*_info structs (8 bits)."
 	range 0 255
-	default 1
+	default 2
 	help
 	  Used to ensure binary compatibility.
 	  For more information, see FW_INFO_MAGIC_COMMON.
@@ -106,5 +102,11 @@ config FW_INFO_MAGIC_LEN
 	help
 	  Total length of magic words (in bytes).
 	  For more information, see FW_INFO_MAGIC_COMMON.
+
+config FW_INFO_VALID_VAL
+	hex
+	default 0x9102FFFF
+	help
+	  The value fw_info::valid will have when valid.
 
 endif # FW_INFO

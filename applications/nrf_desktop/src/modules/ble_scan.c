@@ -20,6 +20,8 @@
 
 #include "ble_scan_def.h"
 
+#include "ble_controller_hci_vs.h"
+
 #include <logging/log.h>
 LOG_MODULE_REGISTER(MODULE, CONFIG_DESKTOP_BLE_SCANNING_LOG_LEVEL);
 
@@ -49,22 +51,19 @@ static bool peers_only = !IS_ENABLED(CONFIG_DESKTOP_BLE_NEW_PEER_SCAN_ON_BOOT);
 static bool scanning;
 
 
+static void conn_cnt_foreach(struct bt_conn *conn, void *data)
+{
+	size_t *cur_cnt = data;
+
+	(*cur_cnt)++;
+}
+
 static size_t count_conn(void)
 {
 	size_t conn_count = 0;
 
-	for (size_t i = 0; i < ARRAY_SIZE(subscribed_peers); i++) {
-		if (!bt_addr_le_cmp(&subscribed_peers[i].addr, BT_ADDR_LE_NONE)) {
-			return conn_count;
-		}
-		struct bt_conn *conn = bt_conn_lookup_addr_le(BT_ID_DEFAULT,
-						&subscribed_peers[i].addr);
-
-		if (conn) {
-			conn_count++;
-			bt_conn_unref(conn);
-		}
-	}
+	bt_conn_foreach(BT_CONN_TYPE_LE, conn_cnt_foreach, &conn_count);
+	__ASSERT_NO_MSG(conn_count <= CONFIG_BT_MAX_CONN);
 
 	return conn_count;
 }
@@ -82,6 +81,13 @@ static size_t count_bond(void)
 	return i;
 }
 
+static void broadcast_scan_state(bool active)
+{
+	struct ble_peer_search_event *event = new_ble_peer_search_event();
+	event->active = active;
+	EVENT_SUBMIT(event);
+}
+
 static void scan_stop(void)
 {
 	int err = bt_scan_stop();
@@ -97,6 +103,8 @@ static void scan_stop(void)
 	}
 
 	scanning = false;
+	broadcast_scan_state(scanning);
+
 	k_delayed_work_cancel(&scan_stop_trigger);
 
 	if (count_conn() < CONFIG_BT_MAX_CONN) {
@@ -248,6 +256,7 @@ static void scan_start(void)
 	}
 
 	scanning = true;
+	broadcast_scan_state(scanning);
 
 	k_delayed_work_submit(&scan_stop_trigger, SCAN_DURATION_MS);
 	k_delayed_work_cancel(&scan_start_trigger);
@@ -438,10 +447,17 @@ static void scan_init(void)
 		.window = BT_GAP_SCAN_FAST_WINDOW,
 	};
 
+	static const struct bt_le_conn_param cp = {
+		.interval_min = 6,
+		.interval_max = 6,
+		.latency = 0,
+		.timeout = 400,
+	};
+
 	static const struct bt_scan_init_param scan_init = {
 		.connect_if_match = true,
 		.scan_param = &sp,
-		.conn_param = NULL,
+		.conn_param = &cp,
 	};
 
 	bt_scan_init(&scan_init);
@@ -457,23 +473,54 @@ static void scan_init(void)
 	k_delayed_work_init(&scan_stop_trigger, scan_stop_trigger_fn);
 }
 
-static void enable_llpm(struct bt_conn *conn)
+static void set_conn_params(struct bt_conn *conn, bool peer_llpm_support)
 {
-	if (IS_ENABLED(CONFIG_BT_LL_NRFXLIB)) {
+	int err;
+
+	if (peer_llpm_support && IS_ENABLED(CONFIG_BT_LL_NRFXLIB)) {
+		struct net_buf *buf;
+
+		hci_vs_cmd_conn_update_t *cmd_conn_update;
+
+		buf = bt_hci_cmd_create(HCI_VS_OPCODE_CMD_CONN_UPDATE,
+					sizeof(*cmd_conn_update));
+		if (!buf) {
+			LOG_ERR("Could not allocate command buffer");
+			return;
+		}
+
+		u16_t conn_handle;
+
+		err = bt_hci_get_conn_handle(conn, &conn_handle);
+		if (err) {
+			LOG_ERR("Failed obtaining conn_handle (err %d)", err);
+			return;
+		}
+
+		cmd_conn_update = net_buf_add(buf, sizeof(*cmd_conn_update));
+		cmd_conn_update->connection_handle   = conn_handle;
+		cmd_conn_update->conn_interval_us    = 1000;
+		cmd_conn_update->conn_latency        = 99;
+		cmd_conn_update->supervision_timeout = 400;
+
+		err = bt_hci_cmd_send_sync(HCI_VS_OPCODE_CMD_CONN_UPDATE, buf,
+					   NULL);
+	} else {
 		struct bt_le_conn_param param = {
-			.interval_min = 0x0D01,
-			.interval_max = 0x0D01,
+			.interval_min = 0x0006,
+			.interval_max = 0x0006,
 			.latency = 99,
-			.timeout = 400
+			.timeout = 400,
 		};
 
-		int err = bt_conn_le_param_update(conn, &param);
+		err = bt_conn_le_param_update(conn, &param);
+	}
 
-		if (err) {
-			LOG_ERR("Cannot set LLPM params (err:%d)", err);
-		} else {
-			LOG_INF("LLPM params set");
-		}
+	if (err) {
+		LOG_ERR("Cannot set conn params (err:%d)", err);
+	} else {
+		LOG_INF("%s conn params set",
+			peer_llpm_support ? "LLPM" : "BLE");
 	}
 }
 
@@ -556,6 +603,10 @@ static bool event_handler(const struct event_header *eh)
 		case PEER_OPERATION_ERASED:
 			reset_subscribers();
 			store_subscribed_peers();
+			if (count_conn() == CONFIG_BT_MAX_CONN) {
+				peers_only = false;
+				break;
+			}
 			/* Fall-through */
 
 		case PEER_OPERATION_SCAN_REQUEST:
@@ -614,7 +665,8 @@ static bool event_handler(const struct event_header *eh)
 				      SCAN_TRIG_TIMEOUT_MS);
 		scan_counter = SCAN_TRIG_TIMEOUT_MS;
 
-		enable_llpm(bt_gatt_dm_conn_get(event->dm));
+		set_conn_params(bt_gatt_dm_conn_get(event->dm),
+				event->peer_llpm_support);
 
 		return false;
 	}

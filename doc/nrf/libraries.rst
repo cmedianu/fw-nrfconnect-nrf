@@ -32,6 +32,30 @@ Here you can find documentation for these libraries, including API documentation
 
    ../../include/net/*
 
+.. toctree::
+   :maxdepth: 1
+   :caption: Libraries for networking:
+   :glob:
+
+   ../../include/net/zzhc/*
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Libraries for NFC:
+   :glob:
+
+   ../../include/nfc/ndef/*
+   ../../include/nfc/t2t/*
+   ../../include/nfc/t4t/*
+   ../../include/nfc/tnep/*
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Binary libraries:
+   :glob:
+
+   ../../lib/bin/*/*
+
 
 .. toctree::
    :maxdepth: 1
@@ -40,10 +64,6 @@ Here you can find documentation for these libraries, including API documentation
 
    ../../include/*
    ../../include/dfu/*
-   ../../include/nfc/ndef/*
-   ../../include/nfc/t2t/*
-   ../../include/nfc/t4t/*
    ../../include/debug/*
    ../../include/shell/*
-   ../../lib/lwm2m_carrier/lwm2m_carrier.rst
    ../../include/at_cmd_parser/*

@@ -7,9 +7,9 @@
 
 #include <zephyr.h>
 #include <device.h>
-#include <sensor.h>
+#include <drivers/sensor.h>
 #include <stdio.h>
-#include <misc/__assert.h>
+#include <sys/__assert.h>
 
 #define THRESHOLD_UPPER                 50
 #define THRESHOLD_LOWER                 0

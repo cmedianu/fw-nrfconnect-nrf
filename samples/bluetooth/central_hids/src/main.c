@@ -10,7 +10,7 @@
 #include <stddef.h>
 #include <errno.h>
 #include <zephyr.h>
-#include <misc/printk.h>
+#include <sys/printk.h>
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
@@ -18,7 +18,7 @@
 #include <bluetooth/uuid.h>
 #include <bluetooth/gatt.h>
 #include <bluetooth/gatt_dm.h>
-#include <misc/byteorder.h>
+#include <sys/byteorder.h>
 #include <bluetooth/scan.h>
 #include <bluetooth/services/hids_c.h>
 #include <dk_buttons_and_leds.h>
@@ -561,7 +561,7 @@ void main(void)
 {
 	int err;
 
-	printk("Starting HIDS Client example\n");
+	printk("Starting Bluetooth Central HIDS example\n");
 
 	bt_gatt_hids_c_init(&hids_c, &hids_c_init_params);
 
