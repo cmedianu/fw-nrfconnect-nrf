@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <net/mqtt.h>
 #include <net/socket.h>
+#include <net/cloud.h>
 #include <logging/log.h>
 #include <sys/util.h>
 
@@ -458,6 +459,15 @@ static void aws_fota_cb_handler(enum aws_fota_evt_id evt)
 		nct_apply_update();
 		break;
 
+	case AWS_FOTA_EVT_ERASE_PENDING:
+		LOG_DBG("AWS_FOTA_EVT_ERASE_PENDING rebooting");
+		nct_apply_update();
+		break;
+
+	case AWS_FOTA_EVT_ERASE_DONE:
+		LOG_DBG("AWS_FOTA_EVT_ERASE_DONE.\n");
+		break;
+
 	case AWS_FOTA_EVT_ERROR:
 		LOG_ERR("AWS_FOTA_EVT_ERROR");
 		break;
@@ -468,6 +478,8 @@ static void aws_fota_cb_handler(enum aws_fota_evt_id evt)
 /* Connect to MQTT broker. */
 int nct_mqtt_connect(void)
 {
+	int err;
+
 	mqtt_client_init(&nct.client);
 
 	nct.client.broker = (struct sockaddr *)&nct.broker;
@@ -491,13 +503,17 @@ int nct_mqtt_connect(void)
 	nct.client.transport.type = MQTT_TRANSPORT_NON_SECURE;
 #endif
 #if defined(CONFIG_AWS_FOTA)
-	int err = aws_fota_init(&nct.client, aws_fota_cb_handler);
+	err = aws_fota_init(&nct.client, aws_fota_cb_handler);
 	if (err != 0) {
-		LOG_ERR("ERROR: aws_fota_init %d", err);
-		return err;
+		LOG_ERR("aws_fota_init failed %d", err);
+		return -ENOEXEC;
 	}
 #endif /* defined(CONFIG_AWS_FOTA) */
-	return mqtt_connect(&nct.client);
+	err = mqtt_connect(&nct.client);
+	if (err != 0) {
+		LOG_DBG("mqtt_connect failed %d", err);
+	}
+	return err;
 }
 
 static int publish_get_payload(struct mqtt_client *client, size_t length)
@@ -690,12 +706,11 @@ int nct_connect(void)
 	err = getaddrinfo(NRF_CLOUD_HOSTNAME, NULL, &hints, &result);
 	if (err) {
 		LOG_DBG("getaddrinfo failed %d", err);
-
-		return err;
+		return -ECHILD;
 	}
 
 	addr = result;
-	err = -ENOENT;
+	err = -ECHILD;
 
 	/* Look for address of the broker. */
 	while (addr != NULL) {
@@ -738,7 +753,6 @@ int nct_connect(void)
 		}
 
 		addr = addr->ai_next;
-		break;
 	}
 
 	/* Free the address. */
@@ -913,6 +927,11 @@ void nct_process(void)
 {
 	mqtt_input(&nct.client);
 	mqtt_live(&nct.client);
+}
+
+int nct_keepalive_time_left(void)
+{
+	return (int)mqtt_keepalive_time_left(&nct.client);
 }
 
 int nct_socket_get(void)

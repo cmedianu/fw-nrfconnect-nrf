@@ -160,7 +160,7 @@ To clone the repositories, complete the following steps:
         west init -m https\://github.com/NordicPlayground/fw-nrfconnect-nrf --mr *NCS_revision*
 
      .. note::
-        *NCS_revision* can be a branch (eg. ``master``), a tag (for example, ``v1.1.0``), or even a SHA (for example, ``224bee9055d986fe2677149b8cbda0ff10650a6e``). When not specified, it defaults to ``master``.
+        *NCS_revision* can be a branch (eg. ``master``), a tag (for example, ``v1.2.0``), or even a SHA (for example, ``224bee9055d986fe2677149b8cbda0ff10650a6e``). When not specified, it defaults to ``master``.
 
    This will clone the manifest repository `fw-nrfconnect-nrf`_ into :file:`nrf`.
 
@@ -168,16 +168,19 @@ To clone the repositories, complete the following steps:
 
       west update
 
-Your directory structure now looks like this::
+Your directory structure now looks similar to this::
 
    ncs
     |___ .west
-    |___ mcuboot
+    |___ bootloader
+    |___ modules
     |___ nrf
     |___ nrfxlib
     |___ zephyr
     |___ ...
 
+Note that there are additional folders, and that the structure might change.
+The full set of repositories and folders is defined in the manifest file.
 
 Updating the repositories
 =========================
@@ -189,10 +192,10 @@ To manage the ``nrf`` repository (the manifest repository), use Git.
 To make sure that you have the latest changes, run ``git fetch origin`` to :ref:`fetch the latest code <dm-wf-update-ncs>` from the `fw-nrfconnect-nrf`_ repository.
 Checking out a branch or tag in the ``nrf`` repository gives you a different version of the manifest file.
 Running ``west update`` will then update the project repositories to the state specified in this manifest file.
-For example, to switch to release v1.1.0 of the |NCS|, enter the following commands in the ``ncs/nrf`` directory::
+For example, to switch to release v1.2.0 of the |NCS|, enter the following commands in the ``ncs/nrf`` directory::
 
    git fetch origin
-   git checkout v1.1.0
+   git checkout v1.2.0
    west update
 
 To update to a particular revision (SHA), make sure that you have that particular revision locally before you check it out (by running ``git fetch origin``)::
@@ -220,7 +223,7 @@ All branches, remotes, and other configuration in your repositories will be main
 To update your repositories to be managed by west, make sure that they are structured and named in the following way::
 
    ncs
-    |___ mcuboot
+    |___ bootloader/mcuboot
     |___ nrf
     |___ nrfxlib
     |___ zephyr
@@ -261,7 +264,7 @@ To install those, open a |bash| in the ``ncs`` folder and enter the following co
 
    pip3 |install_user| -r zephyr/scripts/requirements.txt
    pip3 |install_user| -r nrf/scripts/requirements.txt
-   pip3 |install_user| -r mcuboot/scripts/requirements.txt
+   pip3 |install_user| -r bootloader/mcuboot/scripts/requirements.txt
 
 .. add_deps_end
 
@@ -390,9 +393,14 @@ Setting up the command line build environment
 
 If you want to build and program your application from the command line, you must set up your build environment by defining the required environment variables every time you open a new |bash|.
 
-To define the environment variables, navigate to the ``ncs`` folder and enter the following command: |envfile|
+To define the environment variables, navigate to the ``ncs`` folder and enter the following command: |envfile|.
+For more information on the various relevant environment variables, see :ref:`zephyr:env_vars_important`.
 
 If you need to define additional environment variables, create the file |rcfile| and add the variables there.
 This file is loaded automatically when you run the above command.
+
+You must also make sure that nrfjprog (part of the `nRF Command Line Tools`_) is installed and its path is added to the environment variables.
+The west command programs the board by using nrfjprog by default.
+For more information on nrfjprog, see `programming development boards using nrfjprog <Programming DK boards using nrfjprog_>`_.
 
 .. buildenv_cli_end

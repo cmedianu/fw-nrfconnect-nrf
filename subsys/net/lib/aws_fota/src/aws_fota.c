@@ -320,11 +320,11 @@ static int job_update_rejected(struct mqtt_client *const client,
  * @param[in] topic_len  Length of the topic string.
  * @param[in] payload_len  Length of the received payload.
  *
- * @return 0 If the topic is not a topic used for AWS IoT Jobs. 1 If the content
+ * @return 1 If the topic is not a topic used for AWS IoT Jobs. 0 If the content
  *	     in the topic was successfully handled. Otherwise a negative error
  *	     code is returned.
  */
-static int aws_fota_on_publish_evt(struct mqtt_client *const client,
+static int on_publish_evt(struct mqtt_client *const client,
 				   const u8_t *topic,
 				   u32_t topic_len,
 				   u32_t payload_len)
@@ -353,8 +353,8 @@ static int aws_fota_on_publish_evt(struct mqtt_client *const client,
 	}
 	LOG_INF("received an unhandled MQTT publish event on topic: %s",
 		log_strdup(topic));
-	return 0;
 
+	return 1;
 }
 
 int aws_fota_mqtt_evt_handler(struct mqtt_client *const client,
@@ -365,7 +365,10 @@ int aws_fota_mqtt_evt_handler(struct mqtt_client *const client,
 	switch (evt->type) {
 	case MQTT_EVT_CONNACK:
 		if (evt->result != 0) {
-			return 0;
+			/* Expect more processing of CONNACK event by another
+			 * MQTT Event Handler
+			 */
+			return 1;
 		}
 
 		err = aws_jobs_subscribe_topic_notify_next(client,
@@ -381,23 +384,26 @@ int aws_fota_mqtt_evt_handler(struct mqtt_client *const client,
 			return err;
 		}
 
-		return 0;
 		/* This expects that the application's mqtt handler will handle
 		 * any situations where you could not connect to the MQTT
 		 * broker.
 		 */
+		return 1;
 
 	case MQTT_EVT_DISCONNECT:
-		return 0;
+		return 1;
 
 	case MQTT_EVT_PUBLISH: {
 		const struct mqtt_publish_param *p = &evt->param.publish;
 
-		err = aws_fota_on_publish_evt(client,
-					      p->message.topic.topic.utf8,
-					      p->message.topic.topic.size,
-					      p->message.payload.len);
-		if (err < 1) {
+		err = on_publish_evt(client,
+				     p->message.topic.topic.utf8,
+				     p->message.topic.topic.size,
+				     p->message.payload.len);
+
+		if (err < 0) {
+			return err;
+		} else if (err == 1) {
 			return err;
 		}
 
@@ -461,7 +467,6 @@ int aws_fota_mqtt_evt_handler(struct mqtt_client *const client,
 		/* Handling for default case */
 		return 1;
 	}
-	return 1;
 }
 
 
@@ -481,8 +486,19 @@ static void http_fota_handler(const struct fota_download_evt *evt)
 			callback(AWS_FOTA_EVT_ERROR);
 		}
 		break;
+
+	case FOTA_DOWNLOAD_EVT_ERASE_PENDING:
+		callback(AWS_FOTA_EVT_ERASE_PENDING);
+		break;
+
+	case FOTA_DOWNLOAD_EVT_ERASE_DONE:
+		callback(AWS_FOTA_EVT_ERASE_DONE);
+		break;
+
 	case FOTA_DOWNLOAD_EVT_ERROR:
 		LOG_ERR("FOTA download failed, report back");
+		fota_state = NONE;
+		execution_state = AWS_JOBS_QUEUED;
 		(void) update_job_execution(c, job_id, AWS_JOBS_FAILED,
 					    fota_state, -1, "");
 		callback(AWS_FOTA_EVT_ERROR);

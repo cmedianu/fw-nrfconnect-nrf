@@ -32,11 +32,6 @@ if (CONFIG_BOOTLOADER_MCUBOOT)
 
 else()
 
-  if (CONFIG_MCUBOOT_BUILD_S1_VARIANT)
-    message(WARNING "kconfig option 'MCUBOOT_BUILD_S1_VARIANT' is set,
-but MCUboot is not being built.")
-  endif()
-
   if (CONFIG_SPM)
     set(image_to_boot spm_)
   endif()
@@ -59,10 +54,15 @@ if (s1_addr)
   set(s1_arg --s1-addr ${s1_addr})
 endif()
 
-if (CONFIG_SOC_NRF9160)
+if (DEFINED CONFIG_SOC_NRF9160)
   # Override PM_PROVISION_ADDRESS since Partition Manager cannot yet place
   # partitions in OTP.
   set(otp_start_addr "0xff8108")
+  set(provision_addr ${otp_start_addr})
+elseif (DEFINED CONFIG_SOC_NRF5340_CPUAPP)
+  # Override PM_PROVISION_ADDRESS since Partition Manager cannot yet place
+  # partitions in OTP.
+  set(otp_start_addr "0xff8100")
   set(provision_addr ${otp_start_addr})
 else ()
   set(provision_addr "$<TARGET_PROPERTY:partition_manager,PM_PROVISION_ADDRESS>")

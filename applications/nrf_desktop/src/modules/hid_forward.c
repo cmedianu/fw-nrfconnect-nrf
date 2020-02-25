@@ -12,7 +12,9 @@
 #include <bluetooth/hci.h>
 #include <sys/byteorder.h>
 
+#ifdef CONFIG_BT_LL_NRFXLIB
 #include "ble_controller_hci_vs.h"
+#endif /* CONFIG_BT_LL_NRFXLIB */
 
 #define MODULE hid_forward
 #include "module_state_event.h"
@@ -39,9 +41,9 @@ struct keyboard_event_item {
 	struct hid_keyboard_event *evt;
 };
 
-struct consumer_ctrl_event_item {
+struct ctrl_event_item {
 	sys_snode_t node;
-	struct hid_consumer_ctrl_event *evt;
+	struct hid_ctrl_event *evt;
 };
 
 struct hids_subscriber {
@@ -61,13 +63,14 @@ static void *channel_id;
 
 static struct hid_mouse_event *next_mouse_event;
 static sys_slist_t keyboard_event_list;
-static sys_slist_t consumer_ctrl_event_list;
+static sys_slist_t ctrl_event_list;
 
 static struct k_spinlock lock;
 
 
 static int nrfxlib_vs_conn_latency_update(struct bt_conn *conn, u16_t latency)
 {
+#ifdef CONFIG_BT_LL_NRFXLIB
 	struct net_buf *buf;
 	hci_vs_cmd_conn_update_t *cmd_conn_update;
 
@@ -97,6 +100,9 @@ static int nrfxlib_vs_conn_latency_update(struct bt_conn *conn, u16_t latency)
 	err = bt_hci_cmd_send_sync(HCI_VS_OPCODE_CMD_CONN_UPDATE, buf, NULL);
 
 	return err;
+#else
+	return 0;
+#endif /* CONFIG_BT_LL_NRFXLIB */
 }
 
 static int change_connection_latency(struct hids_subscriber *subscriber, u16_t latency)
@@ -204,6 +210,12 @@ static void process_mouse_report(const u8_t *data)
 
 	k_spinlock_key_t key = k_spin_lock(&lock);
 
+	if (!atomic_get(&usb_ready)) {
+		/* Do not process report if USB is disconnected. */
+		k_spin_unlock(&lock, key);
+		return;
+	}
+
 	if (next_mouse_event) {
 		__ASSERT_NO_MSG(usb_busy);
 
@@ -241,6 +253,13 @@ static void process_keyboard_report(const u8_t *data)
 
 	k_spinlock_key_t key = k_spin_lock(&lock);
 
+	if (!atomic_get(&usb_ready)) {
+		/* Do not process report if USB is disconnected. */
+		k_spin_unlock(&lock, key);
+		k_free(event);
+		return;
+	}
+
 	if (!usb_busy) {
 		EVENT_SUBMIT(event);
 		usb_busy = true;
@@ -258,21 +277,28 @@ static void process_keyboard_report(const u8_t *data)
 	k_spin_unlock(&lock, key);
 }
 
-static void process_consumer_ctrl_report(const u8_t *data)
+static void process_ctrl_report(const u8_t *data, enum in_report report_type)
 {
-	struct hid_consumer_ctrl_event *event = new_hid_consumer_ctrl_event();
+	struct hid_ctrl_event *event = new_hid_ctrl_event();
 
+	event->report_type = report_type;
 	event->subscriber = usb_id;
 	event->usage = sys_get_le16(data);
 
 	k_spinlock_key_t key = k_spin_lock(&lock);
 
+	if (!atomic_get(&usb_ready)) {
+		/* Do not process report if USB is disconnected. */
+		k_spin_unlock(&lock, key);
+		k_free(event);
+		return;
+	}
+
 	if (!usb_busy) {
 		EVENT_SUBMIT(event);
 		usb_busy = true;
 	} else {
-		struct consumer_ctrl_event_item *evt_item =
-			k_malloc(sizeof(*evt_item));
+		struct ctrl_event_item *evt_item = k_malloc(sizeof(*evt_item));
 
 		if (!evt_item) {
 			LOG_ERR("OOM error");
@@ -280,7 +306,7 @@ static void process_consumer_ctrl_report(const u8_t *data)
 		}
 
 		evt_item->evt = event;
-		sys_slist_append(&consumer_ctrl_event_list, &evt_item->node);
+		sys_slist_append(&ctrl_event_list, &evt_item->node);
 	}
 	k_spin_unlock(&lock, key);
 }
@@ -307,8 +333,10 @@ static u8_t hidc_read(struct bt_gatt_hids_c *hids_c,
 		process_keyboard_report(data);
 		break;
 
+	case REPORT_ID_SYSTEM_CTRL:
 	case REPORT_ID_CONSUMER_CTRL:
-		process_consumer_ctrl_report(data);
+		process_ctrl_report(data,
+			REPORT_ID_TO_IN_REPORT(bt_gatt_hids_c_rep_id(rep)));
 		break;
 
 	default:
@@ -364,6 +392,7 @@ static void init(void)
 		bt_gatt_hids_c_init(&subscribers[i].hidc, &params);
 	}
 	sys_slist_init(&keyboard_event_list);
+	sys_slist_init(&ctrl_event_list);
 
 	k_delayed_work_init(&config_fwd_timeout, forward_config_timeout);
 }
@@ -550,6 +579,8 @@ static void handle_config_forward(const struct config_forward_event *event)
 		return;
 	}
 
+	notify_config_forwarded(CONFIG_STATUS_PENDING);
+
 	err = bt_gatt_hids_c_rep_write(recipient_hidc,
 				       config_rep,
 				       hidc_write_cb,
@@ -585,7 +616,7 @@ static void handle_config_forward_get(const struct config_forward_get_event *eve
 	}
 
 	if (forward_pending) {
-		LOG_DBG("GATT read already pending");
+		LOG_DBG("GATT operation already pending");
 		return;
 	}
 
@@ -626,9 +657,9 @@ static void disconnect_subscriber(struct hids_subscriber *subscriber)
 	LOG_INF("HID device disconnected");
 
 	/* Release all pressed keys. */
-	u8_t empty_data[MAX(REPORT_SIZE_CONSUMER_CTRL,
+	u8_t empty_data[MAX(REPORT_SIZE_CTRL,
 			MAX(REPORT_SIZE_MOUSE,
-				REPORT_SIZE_KEYBOARD_KEYS))] = {0};
+			    REPORT_SIZE_KEYBOARD_KEYS))] = {0};
 	struct bt_gatt_hids_c_rep_info *rep = NULL;
 
 	while (NULL != (rep = bt_gatt_hids_c_rep_next(&subscriber->hidc, rep))) {
@@ -644,8 +675,10 @@ static void disconnect_subscriber(struct hids_subscriber *subscriber)
 				process_keyboard_report(empty_data);
 				break;
 
+			case REPORT_ID_SYSTEM_CTRL:
 			case REPORT_ID_CONSUMER_CTRL:
-				process_consumer_ctrl_report(empty_data);
+				process_ctrl_report(empty_data,
+					REPORT_ID_TO_IN_REPORT(bt_gatt_hids_c_rep_id(rep)));
 				break;
 
 			default:
@@ -661,11 +694,60 @@ static void disconnect_subscriber(struct hids_subscriber *subscriber)
 	subscriber->timestamp = 0;
 }
 
+static void clear_state(void)
+{
+	k_spinlock_key_t key = k_spin_lock(&lock);
+
+	atomic_set(&usb_ready, false);
+	usb_id = NULL;
+	usb_busy = false;
+
+	/* Clear all the reports. */
+	while (!sys_slist_is_empty(&keyboard_event_list)) {
+		sys_snode_t *kbd_event_node =
+			sys_slist_get(&keyboard_event_list);
+		struct keyboard_event_item *next_item_kbd;
+
+		next_item_kbd = CONTAINER_OF(kbd_event_node,
+					     struct keyboard_event_item,
+					     node);
+
+		k_spin_unlock(&lock, key);
+		k_free(next_item_kbd->evt);
+		k_free(next_item_kbd);
+		key = k_spin_lock(&lock);
+	}
+
+	while (!sys_slist_is_empty(&ctrl_event_list)) {
+		sys_snode_t *ctrl_event_node =
+			sys_slist_get(&ctrl_event_list);
+		struct ctrl_event_item *next_item_ctrl;
+
+		next_item_ctrl = CONTAINER_OF(ctrl_event_node,
+					      struct ctrl_event_item,
+					      node);
+
+		k_spin_unlock(&lock, key);
+		k_free(next_item_ctrl->evt);
+		k_free(next_item_ctrl);
+		key = k_spin_lock(&lock);
+	}
+
+	struct hid_mouse_event *mouse_evt = next_mouse_event;
+
+	next_mouse_event = NULL;
+	k_spin_unlock(&lock, key);
+
+	k_free(mouse_evt);
+}
+
 static bool event_handler(const struct event_header *eh)
 {
 	if (is_hid_report_sent_event(eh)) {
+		__ASSERT_NO_MSG(atomic_get(&usb_ready));
+
 		struct keyboard_event_item *next_item_kbd = NULL;
-		struct consumer_ctrl_event_item *next_item_c_ctrl = NULL;
+		struct ctrl_event_item *next_item_ctrl = NULL;
 		k_spinlock_key_t key = k_spin_lock(&lock);
 
 		if (!sys_slist_is_empty(&keyboard_event_list)) {
@@ -677,15 +759,15 @@ static bool event_handler(const struct event_header *eh)
 						     node);
 
 			EVENT_SUBMIT(next_item_kbd->evt);
-		} else if (!sys_slist_is_empty(&consumer_ctrl_event_list)) {
-			sys_snode_t *c_ctrl_event_node =
-				sys_slist_get(&consumer_ctrl_event_list);
+		} else if (!sys_slist_is_empty(&ctrl_event_list)) {
+			sys_snode_t *ctrl_event_node =
+				sys_slist_get(&ctrl_event_list);
 
-			next_item_c_ctrl = CONTAINER_OF(c_ctrl_event_node,
-						struct consumer_ctrl_event_item,
+			next_item_ctrl = CONTAINER_OF(ctrl_event_node,
+						struct ctrl_event_item,
 						node);
 
-			EVENT_SUBMIT(next_item_c_ctrl->evt);
+			EVENT_SUBMIT(next_item_ctrl->evt);
 		} else if (next_mouse_event) {
 			EVENT_SUBMIT(next_mouse_event);
 			next_mouse_event = NULL;
@@ -694,7 +776,7 @@ static bool event_handler(const struct event_header *eh)
 		}
 		k_spin_unlock(&lock, key);
 		k_free(next_item_kbd);
-		k_free(next_item_c_ctrl);
+		k_free(next_item_ctrl);
 
 		return false;
 	}
@@ -762,8 +844,7 @@ static bool event_handler(const struct event_header *eh)
 			usb_id = event->id;
 			break;
 		case USB_STATE_DISCONNECTED:
-			usb_id = NULL;
-			atomic_set(&usb_ready, false);
+			clear_state();
 			break;
 		default:
 			/* Ignore */

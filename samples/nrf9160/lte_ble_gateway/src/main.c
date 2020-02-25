@@ -475,7 +475,7 @@ static void buttons_leds_init(void)
 
 void main(void)
 {
-	printk("Application started\n");
+	printk("LTE Sensor Gateway sample started\n");
 
 	buttons_leds_init();
 	ble_init();
@@ -484,10 +484,6 @@ void main(void)
 	cloud_init();
 	modem_configure();
 	cloud_connect(NULL);
-
-	if (IS_ENABLED(CONFIG_CLOUD_UA_CONSOLE)) {
-		console_init();
-	}
 
 	while (true) {
 		nrf_cloud_process();

@@ -93,6 +93,8 @@ All LEDs (1-4):
 
 On the Thingy:91, the application state is indicated by a single RGB LED as follows:
 
+.. _thingy91_operating_states:
+
 .. list-table::
    :header-rows: 1
    :align: center
@@ -152,6 +154,9 @@ The Kconfig file of the application contains options to configure the applicatio
 For example, configure ``CONFIG_POWER_OPTIMIZATION_ENABLE`` to enable power optimization or ``CONFIG_TEMP_USE_EXTERNAL`` to use an external temperature sensor instead of simulated temperature data.
 In |SES|, select **Project** > **Configure nRF Connect SDK project** to browse and configure these options.
 Alternatively, use the command line tool ``menuconfig`` or configure the options directly in ``prj.conf``.
+
+This application supports the |NCS| :ref:`ug_bootloader`, but it is disabled by default.
+To enable the immutable bootloader, set ``CONFIG_SECURE_BOOT=y``.
 
 Testing
 =======

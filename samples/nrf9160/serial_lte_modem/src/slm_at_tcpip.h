@@ -14,7 +14,7 @@
  */
 
 #include <zephyr/types.h>
-#include "slm_at_host.h"
+#include <at_cmd.h>
 
 /**
  * @brief TCP/IP AT command parser.
@@ -25,6 +25,12 @@
  *           Otherwise, a (negative) error code is returned.
  */
 int slm_at_tcpip_parse(const char *at_cmd);
+
+/**
+ * @brief List TCP/IP AT commands.
+ *
+ */
+void slm_at_tcpip_clac(void);
 
 /**
  * @brief Initialize TCP/IP AT command parser.
