@@ -400,11 +400,6 @@ static void handle_image_info_request(const struct config_fetch_request_event *e
 
 static void handle_config_event(const struct config_event *event)
 {
-	if (!event->store_needed) {
-		/* Accept only events coming from transport. */
-		return;
-	}
-
 	if (GROUP_FIELD_GET(event->id) != EVENT_GROUP_DFU) {
 		/* Only DFU events. */
 		return;
@@ -455,8 +450,8 @@ static void handle_config_fetch_request_event(const struct config_fetch_request_
 
 static bool event_handler(const struct event_header *eh)
 {
-	if ((IS_ENABLED(CONFIG_DESKTOP_HID_MOUSE) && is_hid_mouse_event(eh)) ||
-	    (IS_ENABLED(CONFIG_DESKTOP_HID_KEYBOARD) && is_hid_keyboard_event(eh))) {
+	if ((IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_MOUSE_SUPPORT) && is_hid_mouse_event(eh)) ||
+	    (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_KEYBOARD_SUPPORT) && is_hid_keyboard_event(eh))) {
 		device_in_use = true;
 
 		return false;

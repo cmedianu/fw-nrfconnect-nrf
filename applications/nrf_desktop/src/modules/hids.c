@@ -37,11 +37,11 @@ BT_GATT_HIDS_DEF(hids_obj,
 		 REPORT_SIZE_MOUSE,
 		 REPORT_SIZE_KEYBOARD_KEYS,
 		 REPORT_SIZE_KEYBOARD_LEDS
-#if CONFIG_DESKTOP_HID_SYSTEM_CTRL
-		 , REPORT_SIZE_CTRL
+#if CONFIG_DESKTOP_HID_REPORT_SYSTEM_CTRL_SUPPORT
+		 , REPORT_SIZE_SYSTEM_CTRL
 #endif
-#if CONFIG_DESKTOP_HID_CONSUMER_CTRL
-		 , REPORT_SIZE_CTRL
+#if CONFIG_DESKTOP_HID_REPORT_CONSUMER_CTRL_SUPPORT
+		 , REPORT_SIZE_CONSUMER_CTRL
 #endif
 #if CONFIG_DESKTOP_CONFIG_CHANNEL_ENABLE
 		 , REPORT_SIZE_USER_CONFIG
@@ -213,7 +213,6 @@ static int module_init(void)
 {
 	/* HID service configuration */
 	struct bt_gatt_hids_init_param hids_init_param = { 0 };
-	static const u8_t mouse_mask[ceiling_fraction(REPORT_SIZE_MOUSE, 8)] = {0x01};
 
 	hids_init_param.info.bcd_hid        = BASE_USB_HID_SPEC_VERSION;
 	hids_init_param.info.b_country_code = 0x00;
@@ -236,38 +235,61 @@ static int module_init(void)
 	size_t or_pos = 0;
 	size_t feat_pos = 0;
 
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_MOUSE)) {
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_MOUSE_SUPPORT)) {
+		static const u8_t mask[] = REPORT_MASK_MOUSE;
+		BUILD_ASSERT((sizeof(mask) == 0) ||
+			     (sizeof(mask) == ceiling_fraction(REPORT_SIZE_MOUSE, 8)));
+		BUILD_ASSERT(REPORT_ID_MOUSE < ARRAY_SIZE(report_index));
+
 		input_report[ir_pos].id       = REPORT_ID_MOUSE;
 		input_report[ir_pos].size     = REPORT_SIZE_MOUSE;
 		input_report[ir_pos].handler  = mouse_notif_handler;
-		input_report[ir_pos].rep_mask = mouse_mask;
+		input_report[ir_pos].rep_mask = (sizeof(mask) == 0)?(NULL):(mask);
 
 		report_index[input_report[ir_pos].id] = ir_pos;
 		ir_pos++;
 	}
 
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_KEYBOARD)) {
-		input_report[ir_pos].id      = REPORT_ID_KEYBOARD_KEYS;
-		input_report[ir_pos].size    = REPORT_SIZE_KEYBOARD_KEYS;
-		input_report[ir_pos].handler = keyboard_notif_handler;
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_KEYBOARD_SUPPORT)) {
+		static const u8_t mask[] = REPORT_MASK_KEYBOARD_KEYS;
+		BUILD_ASSERT((sizeof(mask) == 0) ||
+			     (sizeof(mask) == ceiling_fraction(REPORT_SIZE_KEYBOARD_KEYS, 8)));
+		BUILD_ASSERT(REPORT_ID_KEYBOARD_KEYS < ARRAY_SIZE(report_index));
+
+		input_report[ir_pos].id       = REPORT_ID_KEYBOARD_KEYS;
+		input_report[ir_pos].size     = REPORT_SIZE_KEYBOARD_KEYS;
+		input_report[ir_pos].handler  = keyboard_notif_handler;
+		input_report[ir_pos].rep_mask = (sizeof(mask) == 0)?(NULL):(mask);
 
 		report_index[input_report[ir_pos].id] = ir_pos;
 		ir_pos++;
 	}
 
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_SYSTEM_CTRL)) {
-		input_report[ir_pos].id      = REPORT_ID_SYSTEM_CTRL;
-		input_report[ir_pos].size    = REPORT_SIZE_CTRL;
-		input_report[ir_pos].handler = system_ctrl_notif_handler;
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_SYSTEM_CTRL_SUPPORT)) {
+		static const u8_t mask[] = REPORT_MASK_SYSTEM_CTRL;
+		BUILD_ASSERT((sizeof(mask) == 0) ||
+			     (sizeof(mask) == ceiling_fraction(REPORT_SIZE_SYSTEM_CTRL, 8)));
+		BUILD_ASSERT(REPORT_ID_SYSTEM_CTRL < ARRAY_SIZE(report_index));
+
+		input_report[ir_pos].id       = REPORT_ID_SYSTEM_CTRL;
+		input_report[ir_pos].size     = REPORT_SIZE_SYSTEM_CTRL;
+		input_report[ir_pos].handler  = system_ctrl_notif_handler;
+		input_report[ir_pos].rep_mask = (sizeof(mask) == 0)?(NULL):(mask);
 
 		report_index[input_report[ir_pos].id] = ir_pos;
 		ir_pos++;
 	}
 
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_CONSUMER_CTRL)) {
-		input_report[ir_pos].id      = REPORT_ID_CONSUMER_CTRL;
-		input_report[ir_pos].size    = REPORT_SIZE_CTRL;
-		input_report[ir_pos].handler = consumer_ctrl_notif_handler;
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_CONSUMER_CTRL_SUPPORT)) {
+		static const u8_t mask[] = REPORT_MASK_CONSUMER_CTRL;
+		BUILD_ASSERT((sizeof(mask) == 0) ||
+			     (sizeof(mask) == ceiling_fraction(REPORT_SIZE_CONSUMER_CTRL, 8)));
+		BUILD_ASSERT(REPORT_ID_CONSUMER_CTRL < ARRAY_SIZE(report_index));
+
+		input_report[ir_pos].id       = REPORT_ID_CONSUMER_CTRL;
+		input_report[ir_pos].size     = REPORT_SIZE_CONSUMER_CTRL;
+		input_report[ir_pos].handler  = consumer_ctrl_notif_handler;
+		input_report[ir_pos].rep_mask = (sizeof(mask) == 0)?(NULL):(mask);
 
 		report_index[input_report[ir_pos].id] = ir_pos;
 		ir_pos++;
@@ -286,7 +308,7 @@ static int module_init(void)
 
 	hids_init_param.feat_rep_group_init.cnt = feat_pos;
 
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_KEYBOARD)) {
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_KEYBOARD_SUPPORT)) {
 		output_report[or_pos].id      = REPORT_ID_KEYBOARD_LEDS;
 		output_report[or_pos].size    = REPORT_SIZE_KEYBOARD_LEDS;
 		output_report[or_pos].handler = keyboard_leds_handler;
@@ -298,13 +320,13 @@ static int module_init(void)
 	hids_init_param.outp_rep_group_init.cnt = or_pos;
 
 	/* Boot protocol setup */
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_MOUSE)) {
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_MOUSE_SUPPORT)) {
 		hids_init_param.is_mouse = true;
 		hids_init_param.boot_mouse_notif_handler =
 			boot_mouse_notif_handler;
 	}
 
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_KEYBOARD)) {
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_KEYBOARD_SUPPORT)) {
 		hids_init_param.is_kb = true;
 		hids_init_param.boot_kb_notif_handler =
 			boot_keyboard_notif_handler;
@@ -496,20 +518,23 @@ static void send_ctrl_report(const struct hid_ctrl_event *event)
 {
 	bt_gatt_complete_func_t sent_cb = NULL;
 	enum report_id report_id = REPORT_ID_COUNT;
+	size_t report_size = 0;
 	void (*sent_fn)(const struct bt_conn*, bool) = NULL;
 	enum in_report report_type = event->report_type;
 
 	switch (report_type) {
 	case IN_REPORT_SYSTEM_CTRL:
-		__ASSERT_NO_MSG(IS_ENABLED(CONFIG_DESKTOP_HID_SYSTEM_CTRL));
+		__ASSERT_NO_MSG(IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_SYSTEM_CTRL_SUPPORT));
 		report_id = REPORT_ID_SYSTEM_CTRL;
+		report_size = REPORT_SIZE_SYSTEM_CTRL;
 		sent_cb = system_ctrl_report_sent_cb;
 		sent_fn = system_ctrl_report_sent;
 	break;
 
 	case IN_REPORT_CONSUMER_CTRL:
-		__ASSERT_NO_MSG(IS_ENABLED(CONFIG_DESKTOP_HID_CONSUMER_CTRL));
+		__ASSERT_NO_MSG(IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_CONSUMER_CTRL_SUPPORT));
 		report_id = REPORT_ID_CONSUMER_CTRL;
+		report_size = REPORT_SIZE_CONSUMER_CTRL;
 		sent_cb = consumer_ctrl_report_sent_cb;
 		sent_fn = consumer_ctrl_report_sent;
 	break;
@@ -529,10 +554,10 @@ static void send_ctrl_report(const struct hid_ctrl_event *event)
 		return;
 	}
 
-	u8_t report[REPORT_SIZE_CTRL];
+	u8_t report[report_size];
 
-	BUILD_ASSERT_MSG(ARRAY_SIZE(report) == sizeof(event->usage),
-			 "Incorrect data size in event");
+	__ASSERT(report_size == sizeof(event->usage),
+		 "Incorrect data size in event");
 
 	/* Set selected usage */
 	sys_put_le16(event->usage, report);
@@ -600,22 +625,22 @@ static void notify_hids(const struct ble_peer_event *event)
 
 static bool event_handler(const struct event_header *eh)
 {
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_MOUSE) &&
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_MOUSE_SUPPORT) &&
 	    is_hid_mouse_event(eh)) {
 		send_mouse_report(cast_hid_mouse_event(eh));
 
 		return false;
 	}
 
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_KEYBOARD) &&
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_KEYBOARD_SUPPORT) &&
 	    is_hid_keyboard_event(eh)) {
 		send_keyboard_report(cast_hid_keyboard_event(eh));
 
 		return false;
 	}
 
-	if ((IS_ENABLED(CONFIG_DESKTOP_HID_SYSTEM_CTRL) ||
-	     IS_ENABLED(CONFIG_DESKTOP_HID_CONSUMER_CTRL)) &&
+	if ((IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_SYSTEM_CTRL_SUPPORT) ||
+	     IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_CONSUMER_CTRL_SUPPORT)) &&
 	    is_hid_ctrl_event(eh)) {
 		send_ctrl_report(cast_hid_ctrl_event(eh));
 

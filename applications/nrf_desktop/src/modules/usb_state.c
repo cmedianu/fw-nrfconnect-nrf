@@ -254,8 +254,22 @@ static void send_keyboard_report(const struct hid_keyboard_event *event)
 
 static void send_ctrl_report(const struct hid_ctrl_event *event)
 {
-	__ASSERT_NO_MSG((event->report_type == IN_REPORT_SYSTEM_CTRL) ||
-			(event->report_type == IN_REPORT_CONSUMER_CTRL));
+	u8_t report_id = 0;
+	size_t report_size = 0;
+
+	switch (event->report_type) {
+	case IN_REPORT_SYSTEM_CTRL:
+		report_id = REPORT_ID_SYSTEM_CTRL;
+		report_size = REPORT_SIZE_SYSTEM_CTRL;
+		break;
+	case IN_REPORT_CONSUMER_CTRL:
+		report_id = REPORT_ID_CONSUMER_CTRL;
+		report_size = REPORT_SIZE_CONSUMER_CTRL;
+		break;
+	default:
+		__ASSERT_NO_MSG(false);
+		break;
+	}
 
 	if (&state != event->subscriber) {
 		/* It's not us */
@@ -267,12 +281,12 @@ static void send_ctrl_report(const struct hid_ctrl_event *event)
 		return;
 	}
 
-	u8_t buffer[REPORT_SIZE_CTRL + sizeof(u8_t)];
+	u8_t buffer[report_size + sizeof(u8_t)];
 
 	if (hid_protocol == HID_PROTOCOL_REPORT) {
 		__ASSERT(sizeof(buffer) == 3, "Invalid report size");
 		/* Encode report. */
-		buffer[0] = IN_REPORT_TO_REPORT_ID(event->report_type);
+		buffer[0] = report_id;
 		sys_put_le16(event->usage, &buffer[1]);
 	} else {
 		/* Do not send when in boot mode. */
@@ -312,7 +326,7 @@ static void reset_pending_report(void)
 
 static void broadcast_subscription_change(void)
 {
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_MOUSE)) {
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_MOUSE_SUPPORT)) {
 		struct hid_report_subscription_event *event_mouse =
 			new_hid_report_subscription_event();
 
@@ -323,7 +337,7 @@ static void broadcast_subscription_change(void)
 		EVENT_SUBMIT(event_mouse);
 	}
 
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_KEYBOARD)) {
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_KEYBOARD_SUPPORT)) {
 		struct hid_report_subscription_event *event_kbd =
 			new_hid_report_subscription_event();
 
@@ -334,7 +348,7 @@ static void broadcast_subscription_change(void)
 		EVENT_SUBMIT(event_kbd);
 	}
 
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_SYSTEM_CTRL)) {
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_SYSTEM_CTRL_SUPPORT)) {
 		struct hid_report_subscription_event *event_system_ctrl =
 			new_hid_report_subscription_event();
 
@@ -345,7 +359,7 @@ static void broadcast_subscription_change(void)
 		EVENT_SUBMIT(event_system_ctrl);
 	}
 
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_CONSUMER_CTRL)) {
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_CONSUMER_CTRL_SUPPORT)) {
 		struct hid_report_subscription_event *event_consumer_ctrl =
 			new_hid_report_subscription_event();
 
@@ -494,22 +508,22 @@ static int usb_init(void)
 
 static bool event_handler(const struct event_header *eh)
 {
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_MOUSE) &&
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_MOUSE_SUPPORT) &&
 	    is_hid_mouse_event(eh)) {
 		send_mouse_report(cast_hid_mouse_event(eh));
 
 		return false;
 	}
 
-	if (IS_ENABLED(CONFIG_DESKTOP_HID_KEYBOARD) &&
+	if (IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_KEYBOARD_SUPPORT) &&
 	    is_hid_keyboard_event(eh)) {
 		send_keyboard_report(cast_hid_keyboard_event(eh));
 
 		return false;
 	}
 
-	if ((IS_ENABLED(CONFIG_DESKTOP_HID_SYSTEM_CTRL) ||
-	     IS_ENABLED(CONFIG_DESKTOP_HID_CONSUMER_CTRL)) &&
+	if ((IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_SYSTEM_CTRL_SUPPORT) ||
+	     IS_ENABLED(CONFIG_DESKTOP_HID_REPORT_CONSUMER_CTRL_SUPORT)) &&
 	    is_hid_ctrl_event(eh)) {
 		send_ctrl_report(cast_hid_ctrl_event(eh));
 
